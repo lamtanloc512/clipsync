@@ -22,7 +22,7 @@ Share your clipboard between your Mac and your phone over your local Wi‑Fi, li
 
 1. Download **`ClipSync-macOS.zip`** from the [latest release](https://github.com/lamtanloc512/clipsync/releases/latest).
 2. Unzip it and drag **ClipSync.app** into your **Applications** folder.
-3. Open it. ClipSync is not notarized by Apple yet, so macOS blocks the first launch:
+3. Open it. Releases signed with Developer ID and notarized by Apple open right away. If macOS says ClipSync “can’t be opened” (an unsigned build):
    - Right‑click **ClipSync.app** → **Open** → **Open**, or
    - Run `xattr -dr com.apple.quarantine /Applications/ClipSync.app` in Terminal.
 4. When macOS asks *"Allow incoming network connections?"*, choose **Allow**.

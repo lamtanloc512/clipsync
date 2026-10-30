@@ -56,4 +56,4 @@ These are inherent to the current design. Please keep them in mind:
 - **Paired devices are fully trusted.** A paired device can read everything you copy and can overwrite the Mac's clipboard. Only pair your own devices and unpair lost ones.
 - **Key material on disk.** The CA key and TLS identity are stored in `~/Library/Application Support/ClipSync/certs` with mode `0600`. Malware running as your user could read them, but the name constraints limit their use to local-network names.
 - **macOS 11–14.** The TLS identity has to go through the login keychain, so a new server key is created at every launch and older entries stay in the keychain. On macOS 15+ the identity stays in memory only.
-- **Distribution.** Releases are ad-hoc signed and not notarized by Apple. Verify `SHA256SUMS.txt` or build from source.
+- **Distribution.** Releases are signed with Developer ID and notarized by Apple when the maintainer's signing secrets are configured; otherwise they are ad-hoc signed. Either way, verify `SHA256SUMS.txt` or build from source.

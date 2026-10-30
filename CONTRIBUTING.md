@@ -174,3 +174,31 @@ git push origin v1.2.0
 The workflow builds the app with `CFBundleShortVersionString` set from the tag, runs the smoke test, and a separate job publishes a GitHub Release with `ClipSync-macOS.zip` and `SHA256SUMS.txt`. Only that tag-triggered job has write access to the repository.
 
 Do not create the release manually in the GitHub UI first: the workflow creates it.
+
+### Signing and notarization
+
+With an Apple Developer account, releases are signed with **Developer ID** and **notarized**, so macOS opens them without any warning and keeps permissions (firewall, Downloads, notifications) across updates. The workflow does this automatically for releases when these repository secrets exist (**Settings → Secrets and variables → Actions → New repository secret**). Without them, releases are ad-hoc signed and a warning is printed.
+
+| Secret | What it is |
+|---|---|
+| `MACOS_CERTIFICATE_P12` | Your **Developer ID Application** certificate and its private key, exported as `.p12`, base64-encoded |
+| `MACOS_CERTIFICATE_PASSWORD` | The password you set when exporting the `.p12` |
+| `NOTARY_API_KEY_P8` | An App Store Connect API key (`AuthKey_XXXXXXXXXX.p8`), pasted as-is or base64-encoded |
+| `NOTARY_API_KEY_ID` | That key's **Key ID** |
+| `NOTARY_API_ISSUER_ID` | The **Issuer ID** shown above the key list |
+
+**1. Developer ID Application certificate** (only the Account Holder can create one)
+
+1. Xcode → Settings → Accounts → select your team → **Manage Certificates…** → **+** → **Developer ID Application**.
+2. Open **Keychain Access** → *login* → *My Certificates*, right-click **Developer ID Application: … (TEAMID)** → **Export…** → save as `.p12` with a strong password.
+3. `base64 -i DeveloperID.p12 | pbcopy`, and paste into `MACOS_CERTIFICATE_P12`.
+
+**2. Notarization API key**
+
+1. [App Store Connect](https://appstoreconnect.apple.com/access/integrations/api) → Users and Access → Integrations → **App Store Connect API** → Team Keys → **+**, access **Developer**.
+2. Download the `.p8` (possible only once) and note the **Key ID** and **Issuer ID**.
+3. `pbcopy < AuthKey_XXXXXXXXXX.p8`, and paste into `NOTARY_API_KEY_P8`.
+
+Then run **Actions → Build → Run workflow** with a version. The release job's log shows `Signing as: Developer ID Application: …`, the notarization status `Accepted`, and `spctl` reporting `source=Notarized Developer ID`.
+
+Keep the `.p12`, its password and the `.p8` out of the repository, issues and chats; delete local copies once they are stored as secrets. Secrets are only given to the release steps that need them, and never to builds from forks.

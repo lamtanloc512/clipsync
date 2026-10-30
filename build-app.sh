@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds ClipSync.app (universal: Apple Silicon + Intel) and ad-hoc signs it.
+# Builds ClipSync.app (universal: Apple Silicon + Intel) and signs it: with SIGN_IDENTITY
+# (e.g. "Developer ID Application: Your Name (TEAMID)") if set, ad-hoc otherwise.
 # Usage: ./build-app.sh [--install]   (--install copies it to /Applications)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -44,7 +45,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --deep --sign - "$APP"
+# Developer ID signing (hardened runtime + secure timestamp, as notarization requires) when
+# SIGN_IDENTITY names a "Developer ID Application" certificate in the keychain; ad-hoc otherwise.
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+    codesign --verify --strict --verbose=2 "$APP"
+else
+    codesign --force --sign - "$APP"
+fi
 echo "Built $(pwd)/$APP"
 
 if [[ "${1:-}" == "--install" ]]; then

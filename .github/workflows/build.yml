@@ -38,10 +38,40 @@ jobs:
 
   build:
     runs-on: macos-15
+    env:
+      # Releases are signed with Developer ID and notarized when the signing secrets exist
+      # (see CONTRIBUTING.md → Releasing); test builds and forks stay ad-hoc signed.
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '') }}
+      HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.NOTARY_API_KEY_P8 != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Import Developer ID certificate
+        if: env.RELEASE == 'true' && env.HAS_SIGNING == 'true'
+        env:
+          P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -f pkcs12 -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then echo "::error::No 'Developer ID Application' identity in MACOS_CERTIFICATE_P12"; exit 1; fi
+          echo "Signing as: $IDENTITY"
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Warn about an unsigned release
+        if: env.RELEASE == 'true' && env.HAS_SIGNING != 'true'
+        run: echo "::warning::Signing secrets are not set, so this release is ad-hoc signed and macOS will ask users to approve it. See CONTRIBUTING.md → Releasing."
 
       - name: Build ClipSync.app
         env:
@@ -196,11 +226,38 @@ jobs:
           curl -skf $URL/ca.mobileconfig -o profile.mobileconfig
           plutil -lint profile.mobileconfig
 
+      - name: Notarize and staple
+        if: env.RELEASE == 'true' && env.HAS_SIGNING == 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_API_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: |
+          KEY="$RUNNER_TEMP/notary.p8"
+          # Accept the .p8 either as-is or base64-encoded.
+          if printf '%s' "$NOTARY_KEY" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$NOTARY_KEY" > "$KEY"
+          else
+            printf '%s' "$NOTARY_KEY" | base64 --decode > "$KEY"
+          fi
+          ditto -c -k --keepParent ClipSync.app notarize.zip
+          xcrun notarytool submit notarize.zip --key "$KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" \
+            --wait --timeout 30m --output-format json | tee notary.json
+          rm -f "$KEY" notarize.zip
+          python3 -c 'import json; s=json.load(open("notary.json"))["status"]; print("status:", s); assert s == "Accepted", s'
+          xcrun stapler staple ClipSync.app
+          xcrun stapler validate ClipSync.app
+          spctl --assess --type execute --verbose=2 ClipSync.app
+
       - name: Package
         run: |
           ditto -c -k --keepParent ClipSync.app ClipSync-macOS.zip
           shasum -a 256 ClipSync-macOS.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
+
+      - name: Remove signing keychain
+        if: always() && env.SIGN_IDENTITY != ''
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
 
       - uses: actions/upload-artifact@v4
         with:

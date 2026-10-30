@@ -22,7 +22,7 @@ Chia sẻ clipboard giữa Mac và điện thoại qua Wi‑Fi trong nhà, giố
 
 1. Tải **`ClipSync-macOS.zip`** ở [bản phát hành mới nhất](https://github.com/lamtanloc512/clipsync/releases/latest).
 2. Giải nén, rồi kéo **ClipSync.app** vào thư mục **Applications**.
-3. Mở app. ClipSync chưa được Apple notarize nên lần đầu macOS sẽ chặn. Có 2 cách mở:
+3. Mở app. Bản phát hành đã ký Developer ID và được Apple notarize sẽ mở được ngay. Nếu macOS báo không mở được ClipSync (bản chưa ký):
    - Chuột phải vào **ClipSync.app** → **Open** → **Open**, hoặc
    - Chạy `xattr -dr com.apple.quarantine /Applications/ClipSync.app` trong Terminal.
 4. Khi macOS hỏi *"Allow incoming network connections?"*, chọn **Allow**.
