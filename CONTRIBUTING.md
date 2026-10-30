@@ -22,6 +22,19 @@ swift run                    # run from the terminal (logs go to stderr)
 ./build-app.sh --install     # ... and copy to /Applications and launch it
 ```
 
+### Phone web client
+
+The phone UI lives in `web/` (`index.html`, `app.js`, `app.css`). It is styled with Tailwind CSS v4 and [Basecoat](https://github.com/lamtanloc512/basecoat) using the **Lyra** style pack, pinned to a commit in `web/build.mjs`. The build compiles everything into `Sources/ClipSync/WebAssets.generated.swift`, which is committed, so building the Mac app never needs Node.
+
+```bash
+cd web
+npm ci
+npm run build                      # regenerates WebAssets.generated.swift
+BASECOAT_DIR=../../basecoat npm run build   # use a local Basecoat checkout instead
+```
+
+`npm run build` also writes plain files to `web/.cache/dist/` for previewing in a desktop browser. Never edit the generated Swift file by hand; CI fails if it doesn't match `web/`.
+
 `swift run` works for most development. Features that need a real app bundle, such as **Launch at Login**, only work with `build-app.sh`.
 
 App data lives in `~/Library/Application Support/ClipSync/`:
@@ -69,7 +82,8 @@ ClipSync is a single macOS menu-bar app. Phones are plain HTTPS clients: a web p
 | `DeviceStore.swift` | Paired devices (persisted), pairing requests, one-time QR secret |
 | `PairingWindow.swift` | QR code window (`.local` URL with IP fallback, CA fingerprint) |
 | `PairRequestWindow.swift` | Non-modal Accept/Reject panel |
-| `WebPage.swift` | The phone web client (HTML/CSS/JS in one string) |
+| `HostnamePublisher.swift` | Publishes `clipsync.local` (mDNS A records via `dns_sd`), picks `clipsync-xxxx.local` on conflict |
+| `WebAssets.generated.swift` | The phone web client, generated from `web/` (do not edit) |
 | `Util.swift` | Common-mode timers, secure random strings, constant-time comparison |
 
 Design notes:
@@ -77,11 +91,12 @@ Design notes:
 - **Everything runs on the main queue:** the listener, connections, timers and pasteboard access. There are no locks, and clipboard traffic is tiny. Never block the main thread. In particular, use non-modal windows instead of `NSAlert.runModal()` while the server is running.
 - **Timers are added in `.common` run-loop mode** (`scheduleTimer`), so they keep firing while menus are open.
 - **No third-party dependencies.** Please discuss in an issue before adding one.
+- **Auto sync on the phone is bounded by browser rules:** Chrome/Android can write the clipboard while the page has focus and read it once the `clipboard-read` permission is granted; Safari/iOS needs a tap for both. `web/app.js` documents the behaviour at the top. The client keeps only a SHA-256 of the last synced text (never the text itself) to avoid echoing items back.
 - **Mac → phone sync uses long polling:** `GET /api/clipboard?since=<version>&wait=25` returns as soon as the clipboard version changes.
 
 ### Pairing flow
 
-1. **Pair a Phone** generates a one-time secret and shows `https://<name>.local:8765/#k=<secret>` as a QR code. The secret is in the URL fragment, so browsers never send it in requests or `Referer` headers.
+1. **Pair a Phone** generates a one-time secret and shows `https://clipsync.local:8765/#k=<secret>` as a QR code (the IP address is only a fallback the user can switch to). The secret is in the URL fragment, so browsers never send it in requests or `Referer` headers.
 2. The web client posts `{name, secret}` to `/api/pair`. If the secret is wrong or missing the request is refused (403), and the Mac shows nothing.
 3. The Mac shows an Accept/Reject panel with a 4-digit code that the phone also displays.
 4. On Accept, the phone receives a 32-character device token via `/api/pair/status` (handed out once). The Mac stores only its SHA-256.
@@ -93,11 +108,11 @@ All endpoints are HTTPS on port 8765. Authenticated endpoints need `X-Token: <to
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/` | – | Web client |
+| GET | `/` | – | Web client (`/app.css`, `/app.js`, `/manifest.webmanifest`, `/icon.svg`) |
 | GET | `/ca.crt`, `/ca.mobileconfig` | – | CA certificate (DER) and iOS configuration profile |
 | POST | `/api/pair` | QR secret | `{"name", "secret"}` → `{id, code}` |
 | GET | `/api/pair/status?id=&wait=25` | – | `{state: pending/accepted/rejected/expired, token?}` |
-| GET | `/api/clipboard?since=N&wait=25` | ✓ | `{version, kind, text, source, date}` (long poll) |
+| GET | `/api/clipboard?since=N&wait=25` | ✓ | `{version, epoch, kind, text, source, mine, date}` (long poll). `epoch` changes when the Mac app restarts; `mine` is true if the calling device sent the item |
 | GET | `/api/clipboard/raw` | ✓ | Current item as `text/plain` or `image/png` |
 | GET | `/api/clipboard/image` | ✓ | Current image as PNG |
 | POST | `/api/clipboard` | ✓ | Body: text, `{"text": "..."}`, or an image (PNG/JPEG/HEIC) |

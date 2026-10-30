@@ -27,7 +27,8 @@ ClipSync runs an HTTPS server on your Mac that phones on the same local network 
 |---|---|
 | Eavesdropping on the Wi‑Fi | TLS 1.2+ with a server certificate signed by a per-Mac private CA |
 | Someone on the network spamming pairing prompts | Pairing requires a one-time secret that is only shown in the QR code on the Mac's screen |
-| A malicious website pairing itself or reading the clipboard (CSRF/CORS) | No CORS headers. Requests with a foreign `Origin` are refused. Pairing needs the QR secret, which websites cannot know |
+| A malicious website pairing itself or reading the clipboard (CSRF/CORS) | No CORS headers. A strict Content-Security-Policy (`script-src 'self'`, no inline scripts). Requests with a foreign `Origin` are refused. Pairing needs the QR secret, which websites cannot know |
+| Revealing the Mac's identity | Phones use the neutral mDNS name `clipsync.local`. The server certificate, the public CA (`/ca.crt`) and the iOS profile carry no Mac or owner name |
 | DNS rebinding | The `Host` header must be one of the Mac's own names or addresses. TLS also checks the name |
 | Access from the internet (global IPv6, VPN peers) | Connections are only accepted from private, link-local, ULA, CGNAT and loopback addresses |
 | Accidentally approving a stranger | The same 4-digit code is shown on both screens. **Accept** requires a click and has no keyboard shortcut |
@@ -46,6 +47,8 @@ These are inherent to the current design. Please keep them in mind:
   - Do the first pairing on a network nobody else can interfere with, such as the phone's own hotspot or your home Wi‑Fi.
   - On iPhone, install the certificate via AirDrop.
   - Compare the certificate fingerprint on the phone with the one shown in the Mac's QR window. Checking the first and last 8 hex digits (64 bits) is enough.
+- **Automatic sending from the phone.** With auto-send on, whatever is copied on the phone while ClipSync is open — including passwords from a password manager — is sent to the Mac. Browsers don't expose "sensitive" clipboard flags, so ClipSync can't filter these on the phone side.
+- **mDNS name.** Anyone on the network can also announce `clipsync.local`. If another device takes the name first, ClipSync switches to `clipsync-xxxx.local`. A device that answers for the name can't impersonate the Mac, because it has no certificate signed by your Mac's CA — but on a first connection without the CA installed (see above) the phone can't tell the difference.
 - **Paired devices are fully trusted.** A paired device can read everything you copy and can overwrite the Mac's clipboard. Only pair your own devices and unpair lost ones.
 - **Key material on disk.** The CA key and TLS identity are stored in `~/Library/Application Support/ClipSync/certs` with mode `0600`. Malware running as your user could read them, but the name constraints limit their use to local-network names.
 - **macOS 13–14.** The TLS identity has to go through the login keychain, so a new server key is created at every launch and older entries stay in the keychain. On macOS 15+ the identity stays in memory only.

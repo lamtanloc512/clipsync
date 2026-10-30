@@ -66,14 +66,16 @@ final class CertificateManager {
     }
 
     /// iOS configuration profile that installs the CA as a root certificate.
-    func mobileConfig(macName: String) -> Data? {
+    /// `name` is the neutral hostname (e.g. "clipsync.local"): the profile is downloadable by anyone
+    /// on the network, so it must not reveal the Mac's own (often personal) name.
+    func mobileConfig(name: String) -> Data? {
         guard let der = caCertificateDER else { return nil }
         let idSuffix = String((caFingerprint ?? "x").replacingOccurrences(of: ":", with: "").prefix(16))
         let certPayload: [String: Any] = [
             "PayloadCertificateFileName": "ClipSync-CA.cer",
             "PayloadContent": der,
-            "PayloadDescription": "Lets this device connect securely to ClipSync on \(macName).",
-            "PayloadDisplayName": "ClipSync CA (\(macName))",
+            "PayloadDescription": "Lets this device connect securely to ClipSync at \(name).",
+            "PayloadDisplayName": "ClipSync CA (\(name))",
             "PayloadIdentifier": "com.lamtanloc.clipsync.ca.\(idSuffix)",
             "PayloadType": "com.apple.security.root",
             "PayloadUUID": UUID().uuidString,
@@ -81,8 +83,8 @@ final class CertificateManager {
         ]
         let profile: [String: Any] = [
             "PayloadContent": [certPayload],
-            "PayloadDescription": "Trust the private certificate of ClipSync on \(macName). It is only valid for local network addresses.",
-            "PayloadDisplayName": "ClipSync (\(macName))",
+            "PayloadDescription": "Trust the private certificate of ClipSync at \(name). It is only valid for local network addresses.",
+            "PayloadDisplayName": "ClipSync (\(name))",
             "PayloadIdentifier": "com.lamtanloc.clipsync.profile.\(idSuffix)",
             "PayloadRemovalDisallowed": false,
             "PayloadType": "Configuration",
@@ -102,7 +104,9 @@ final class CertificateManager {
             return
         }
         // X.509 limits CN to 64 characters; Mac names can be longer.
-        let name = String(Self.sanitize(Host.current().localizedName ?? "Mac", allowed: " -_").prefix(36))
+        // A random tag instead of the Mac's name: the CA is public (served as /ca.crt) and the
+        // Mac's name is often its owner's name. The tag still tells several Macs apart.
+        let name = randomString(length: 6).uppercased()
         let config = """
         [req]
         distinguished_name = dn
@@ -258,11 +262,5 @@ final class CertificateManager {
             throw CertificateError.openssl("\(arguments.first ?? ""): \(String(decoding: errors, as: UTF8.self))")
         }
         return output
-    }
-
-    static func sanitize(_ s: String, allowed extra: String = "") -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: extra))
-        let cleaned = String(s.unicodeScalars.filter { allowed.contains($0) && $0.isASCII })
-        return cleaned.isEmpty ? "Mac" : cleaned
     }
 }

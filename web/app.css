@@ -1,0 +1,6 @@
+/* Tailwind v4 + Basecoat (lamtanloc512/basecoat), Lyra style pack.
+   build.mjs resolves BASECOAT to the pinned checkout. */
+@import "tailwindcss" source(none);
+@import "BASECOAT/src/css/basecoat-lyra.css";
+@source "./index.html";
+@source "./app.js";

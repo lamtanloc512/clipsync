@@ -36,6 +36,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pairRequestWindow.onDecision = { [weak self] id, accepted in
             self?.service.devices.resolve(id: id, accept: accepted)
         }
+        service.hostnamePublisher.onHostnameChange = { [weak self] _ in
+            // New name after an mDNS conflict: reissue the certificate and refresh an open QR code.
+            guard let self else { return }
+            self.service.checkAddresses()
+            if self.pairingWindow?.isVisible == true { self.showPairing() }
+        }
         service.devices.onPairingSecretInvalidated = { [weak self] in
             // Keep an open QR window usable with a fresh code.
             guard let self, self.pairingWindow?.isVisible == true else { return }
@@ -65,10 +71,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         header.isEnabled = false
         menu.addItem(header)
 
-        let addresses = SyncService.dnsNames + SyncService.localIPv4Addresses()
-        let addressTitle = addresses.isEmpty
+        // Only the neutral name; the IP stays out of sight (it is just the QR window's fallback).
+        let addressTitle = SyncService.localIPv4Addresses().isEmpty
             ? "No network"
-            : addresses.joined(separator: " · ") + " — port \(service.port)"
+            : "\(service.hostname) — port \(service.port)"
         let addressItem = NSMenuItem(title: addressTitle, action: nil, keyEquivalent: "")
         addressItem.isEnabled = false
         menu.addItem(addressItem)
@@ -148,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// AirDrop is an out-of-band channel: unlike downloading over Wi‑Fi, an attacker on the
     /// network cannot swap in their own certificate on the way to the phone.
     @objc private func airDropCertificate() {
-        guard let profile = service.certificates.mobileConfig(macName: service.macName) else { return }
+        guard let profile = service.certificates.mobileConfig(name: service.hostname) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("ClipSync.mobileconfig")
         do {
             try profile.write(to: url, options: .atomic)

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>ClipSync</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="/app.css?v=__CSS_VERSION__">
+  <script src="/app.js?v=__JS_VERSION__" defer></script>
+</head>
+<body class="min-h-dvh bg-background text-foreground antialiased">
+  <main class="mx-auto flex w-full max-w-md flex-col gap-4 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-10">
+    <header class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+        <h1 class="text-lg font-semibold">ClipSync</h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="status" class="badge" data-variant="outline">Connecting…</span>
+        <button id="settingsBtn" type="button" class="btn" data-variant="ghost" data-size="icon" aria-label="Settings" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Pairing -->
+    <section id="pairView" class="card" hidden>
+      <header>
+        <h2>Pair with your Mac</h2>
+        <p>Confirm the request on your Mac to start syncing.</p>
+      </header>
+      <section class="flex flex-col gap-4">
+        <div id="pairScan" class="alert" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+          <h2>Scan the QR code</h2>
+          <section>On your Mac, open <strong>Pair a Phone</strong> from the ClipSync menu and scan the code with this phone’s camera.</section>
+        </div>
+        <form id="pairForm" class="flex flex-col gap-3">
+          <div role="group" class="field">
+            <label for="deviceName">Device name</label>
+            <input id="deviceName" class="input" type="text" maxlength="40" autocomplete="off" required>
+          </div>
+          <button id="pairBtn" type="submit" class="btn">Pair</button>
+        </form>
+        <div id="pairWait" class="flex flex-col items-center gap-3 text-center" hidden>
+          <p class="text-sm text-muted-foreground">Check that your Mac shows the same code, then click <strong>Accept</strong> there.</p>
+          <p id="pairCode" class="font-mono text-5xl font-semibold tracking-[0.2em]"></p>
+          <button id="pairCancel" type="button" class="btn" data-variant="outline">Cancel</button>
+        </div>
+        <p id="pairMsg" class="text-sm text-destructive" role="status"></p>
+      </section>
+    </section>
+
+    <!-- Syncing -->
+    <div id="mainView" class="flex flex-col gap-4" hidden>
+      <button id="tapToCopy" type="button" class="btn w-full" hidden>New from your Mac — tap to copy</button>
+
+      <section class="card">
+        <header>
+          <h2>Auto sync</h2>
+          <p id="syncHint">Keep ClipSync open: your clipboards stay in sync both ways.</p>
+        </header>
+        <section class="flex flex-col gap-4">
+          <div role="group" class="field" data-orientation="horizontal">
+            <input type="checkbox" id="autoReceive" role="switch" class="input">
+            <label for="autoReceive">Copy from Mac automatically</label>
+          </div>
+          <div role="group" class="field" data-orientation="horizontal">
+            <input type="checkbox" id="autoSend" role="switch" class="input">
+            <label for="autoSend">Send this phone’s clipboard automatically</label>
+          </div>
+          <div id="permissionAlert" class="alert" hidden>
+            <h2>Allow clipboard access</h2>
+            <section id="permissionText">To send automatically, allow ClipSync to see what you copy on this phone.</section>
+            <footer><button id="grantBtn" type="button" class="btn" data-size="sm">Allow</button></footer>
+          </div>
+          <button id="sendNowBtn" type="button" class="btn" data-variant="secondary" hidden>Send clipboard to Mac</button>
+        </section>
+      </section>
+
+      <section class="card">
+        <header>
+          <h2>Latest</h2>
+          <p id="latestMeta">Waiting for your Mac…</p>
+        </header>
+        <section>
+          <pre id="latestText" class="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-sm"></pre>
+          <img id="latestImg" class="max-w-full rounded-md" alt="Image from the clipboard" hidden>
+        </section>
+        <footer>
+          <button id="copyBtn" type="button" class="btn" data-variant="outline" disabled>Copy again</button>
+        </footer>
+      </section>
+    </div>
+
+    <!-- Settings -->
+    <dialog id="settings" class="drawer" aria-labelledby="settingsTitle">
+      <article>
+      <header>
+        <h2 id="settingsTitle">Settings</h2>
+        <p>Paired as <strong id="pairedName"></strong></p>
+      </header>
+      <section class="flex flex-col gap-4 overflow-y-auto px-4">
+        <section class="accordion">
+          <details>
+            <summary>
+              Send text or a photo manually
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <section class="flex flex-col gap-3">
+              <textarea id="manualText" class="textarea" rows="4" placeholder="Type or paste here"></textarea>
+              <div class="flex gap-2">
+                <button id="manualSend" type="button" class="btn flex-1">Send to Mac</button>
+                <label class="btn" data-variant="outline">Photo<input id="photoInput" type="file" accept="image/*" class="sr-only"></label>
+              </div>
+            </section>
+          </details>
+          <details>
+            <summary>
+              Trust your Mac’s certificate
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <section class="flex flex-col gap-2 text-sm">
+              <p>Removes the browser warning and lets Shortcuts / HTTP Shortcuts connect. It only works for local network addresses.</p>
+              <p><strong>Android:</strong> <a class="underline" href="/ca.crt">download the certificate</a>, then Settings → Security → Encryption &amp; credentials → Install a certificate → CA certificate.</p>
+              <p><strong>iPhone:</strong> on the Mac choose <em>Send Certificate via AirDrop</em>, or <a class="underline" href="/ca.mobileconfig">download the profile</a>. Then Settings → General → VPN &amp; Device Management → install, and Settings → General → About → Certificate Trust Settings → turn it on.</p>
+              <p class="text-muted-foreground">Check it is really your Mac’s: the SHA‑256 fingerprint must start and end with the characters shown under the QR code on your Mac.</p>
+            </section>
+          </details>
+          <details>
+            <summary>
+              Token for Shortcuts
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </summary>
+            <section class="flex flex-col gap-2 text-sm">
+              <p>Send it as the <code>X-Token</code> header from iOS Shortcuts or HTTP Shortcuts. Keep it private.</p>
+              <div class="flex gap-2">
+                <button id="tokenShow" type="button" class="btn" data-variant="outline" data-size="sm">Show</button>
+                <button id="tokenCopy" type="button" class="btn" data-variant="outline" data-size="sm" hidden>Copy</button>
+              </div>
+              <code id="tokenBox" class="break-all rounded-md border border-dashed p-2" hidden></code>
+            </section>
+          </details>
+        </section>
+        <button id="unpairBtn" type="button" class="btn" data-variant="destructive">Unpair this device</button>
+      </section>
+      <footer>
+        <button id="settingsClose" type="button" class="btn" data-variant="outline">Close</button>
+      </footer>
+      </article>
+    </dialog>
+
+    <div id="toaster" class="toaster"></div>
+  </main>
+</body>
+</html>

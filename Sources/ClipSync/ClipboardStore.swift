@@ -11,6 +11,8 @@ struct ClipItem {
     let image: Data?
     /// "Mac" or the name of the phone that sent it.
     let source: String
+    /// Paired-device id of the phone that sent it; nil for copies made on the Mac.
+    var sourceID: String? = nil
     let date: Date
 
     var preview: String {
@@ -105,17 +107,17 @@ final class ClipboardStore {
 
     // MARK: - Writing
 
-    func setText(_ text: String, source: String) {
+    func setText(_ text: String, source: String, sourceID: String? = nil) {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         lastChangeCount = pasteboard.changeCount
-        commit(ClipItem(kind: .text, text: text, image: nil, source: source, date: Date()))
+        commit(ClipItem(kind: .text, text: text, image: nil, source: source, sourceID: sourceID, date: Date()))
     }
 
     /// Accepts PNG / JPEG / HEIC only, and checks the pixel size before decoding anything,
     /// so a tiny file claiming to be 50 000 × 50 000 cannot exhaust memory.
     @discardableResult
-    func setImage(_ data: Data, source: String) -> ImageResult {
+    func setImage(_ data: Data, source: String, sourceID: String? = nil) -> ImageResult {
         guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               let type = CGImageSourceGetType(src) as String?,
               Self.allowedImageTypes.contains(type),
@@ -130,7 +132,7 @@ final class ClipboardStore {
         pasteboard.clearContents()
         pasteboard.writeObjects([image])
         lastChangeCount = pasteboard.changeCount
-        commit(ClipItem(kind: .image, text: nil, image: png, source: source, date: Date()))
+        commit(ClipItem(kind: .image, text: nil, image: png, source: source, sourceID: sourceID, date: Date()))
         return .ok
     }
 

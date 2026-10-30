@@ -214,7 +214,7 @@ final class HTTPServer {
         headers["Content-Type"] = response.contentType
         headers["Content-Length"] = String(response.body.count)
         headers["Connection"] = "close"
-        headers["Cache-Control"] = "no-store"
+        if headers["Cache-Control"] == nil { headers["Cache-Control"] = "no-store" }
         headers["X-Content-Type-Options"] = "nosniff"
         headers["Referrer-Policy"] = "no-referrer"
         headers["X-Frame-Options"] = "DENY"

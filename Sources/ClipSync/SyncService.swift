@@ -1,15 +1,17 @@
 import Foundation
-import SystemConfiguration
 
 /// Glues the HTTPS server to the clipboard store, handles pairing and per-device auth.
 final class SyncService {
     let store = ClipboardStore()
     let devices = DeviceStore()
     let certificates = CertificateManager()
+    let hostnamePublisher = HostnamePublisher()
     private var server: HTTPServer?
     private var addressTimer: Timer?
 
     let macName = Host.current().localizedName ?? "Mac"
+    /// Changes every launch, so phones can tell a restarted Mac (whose versions start over) apart.
+    let epoch = String(UUID().uuidString.prefix(8))
 
     var port: UInt16 {
         let stored = UserDefaults.standard.integer(forKey: "port")
@@ -22,6 +24,7 @@ final class SyncService {
 
     func start() throws {
         store.start()
+        hostnamePublisher.update(addresses: Self.localIPv4Interfaces())
         try startServer()
         // Wi‑Fi changes give the Mac a new IP; reissue the certificate so phones keep connecting.
         addressTimer = scheduleTimer(after: 15, repeats: true) { [weak self] _ in
@@ -30,7 +33,7 @@ final class SyncService {
     }
 
     private func startServer() throws {
-        let identity = try certificates.serverIdentity(dnsNames: Self.dnsNames, ips: Self.localIPv4Addresses())
+        let identity = try certificates.serverIdentity(dnsNames: dnsNames, ips: Self.localIPv4Addresses())
         let server = HTTPServer(port: port, identity: identity, admit: { [weak self] head in
             self?.admit(head) ?? .reject(.text("Gone", status: 503))
         }, handler: { [weak self] request, respond in
@@ -42,8 +45,9 @@ final class SyncService {
         self.server = server
     }
 
-    private func checkAddresses() {
-        guard !certificates.covers(dnsNames: Self.dnsNames, ips: Self.localIPv4Addresses()) else { return }
+    func checkAddresses() {
+        hostnamePublisher.update(addresses: Self.localIPv4Interfaces())
+        guard !certificates.covers(dnsNames: dnsNames, ips: Self.localIPv4Addresses()) else { return }
         server?.stop()
         server = nil
         onServerState?("restarting…")
@@ -55,21 +59,16 @@ final class SyncService {
 
     // MARK: - URLs
 
-    /// The Mac's Bonjour name (System Settings → Sharing → Local hostname), e.g. "lams-macbook-pro.local".
-    /// Unlike the IP it survives DHCP changes, so the phone's bookmark and pairing keep working.
-    static var localHostName: String? {
-        guard let name = SCDynamicStoreCopyLocalHostName(nil) as String?, !name.isEmpty else { return nil }
-        return name.lowercased() + ".local"
-    }
+    /// The neutral name phones use ("clipsync.local", published by `HostnamePublisher`).
+    /// Unlike the IP it survives DHCP changes, and unlike the Mac's own Bonjour name it doesn't
+    /// reveal the owner's name. The certificate is issued for it (plus IPs for the fallback).
+    var hostname: String { hostnamePublisher.hostname }
+    var dnsNames: [String] { [hostname] }
 
-    static var dnsNames: [String] {
-        localHostName.map { [$0] } ?? []
-    }
-
-    /// QR targets: the .local name first, the current IP as a fallback for phones without mDNS.
-    /// The one-time secret goes in the #fragment, which browsers never send to the server.
+    /// QR targets: the published name first, the current IP as a fallback for phones that can't
+    /// resolve .local names. The one-time secret goes in the #fragment, which browsers never send.
     func pairingURLs(secret: String) -> [String] {
-        let hosts = Self.dnsNames + Array(Self.localIPv4Addresses().prefix(1))
+        let hosts = dnsNames + Array(Self.localIPv4Addresses().prefix(1))
         return hosts.map { "https://\($0):\(port)/#k=\(secret)" }
     }
 
@@ -77,13 +76,14 @@ final class SyncService {
 
     static let maxTextBytes = 2 * 1024 * 1024
     private static let publicRoutes: Set<String> = [
-        "GET /", "GET /index.html", "GET /ca.crt", "GET /ca.mobileconfig",
+        "GET /", "GET /index.html", "GET /app.css", "GET /app.js", "GET /manifest.webmanifest", "GET /icon.svg",
+        "GET /ca.crt", "GET /ca.mobileconfig",
         "POST /api/pair", "GET /api/pair/status",
     ]
 
     private func admit(_ head: HTTPRequestHead) -> Admission {
         // DNS-rebinding / misdirected-request defence: the Host must be one of our own names.
-        let allowedHosts = Set(Self.dnsNames + Self.localIPv4Addresses() + ["localhost", "127.0.0.1"])
+        let allowedHosts = Set(dnsNames + Self.localIPv4Addresses() + ["localhost", "127.0.0.1"])
         guard let host = Self.hostName(fromHostHeader: head.headers["host"]), allowedHosts.contains(host) else {
             return .reject(.text("Unknown host", status: 400))
         }
@@ -124,11 +124,25 @@ final class SyncService {
     private func handle(_ req: HTTPRequest, respond: @escaping (HTTPResponse) -> Void) {
         switch (req.method, req.path) {
         case ("GET", "/"), ("GET", "/index.html"):
-            var page = HTTPResponse.html(WebPage.html)
+            var page = HTTPResponse.html(WebAssets.indexHTML)
+            // No inline scripts at all: the client is served as /app.js.
             page.headers["Content-Security-Policy"] =
-                "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
-                "img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                "default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
+                "img-src 'self' blob:; connect-src 'self'; manifest-src 'self'; " +
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
             respond(page)
+            return
+        case ("GET", "/app.css"):
+            respond(Self.staticAsset(WebAssets.appCSS, type: "text/css; charset=utf-8", versioned: req.query["v"] != nil))
+            return
+        case ("GET", "/app.js"):
+            respond(Self.staticAsset(WebAssets.appJS, type: "text/javascript; charset=utf-8", versioned: req.query["v"] != nil))
+            return
+        case ("GET", "/manifest.webmanifest"):
+            respond(Self.staticAsset(WebAssets.manifest, type: "application/manifest+json", versioned: false))
+            return
+        case ("GET", "/icon.svg"):
+            respond(Self.staticAsset(WebAssets.iconSVG, type: "image/svg+xml", versioned: false))
             return
         case ("GET", "/ca.crt"):
             guard let der = certificates.caCertificateDER else { respond(.text("No CA", status: 404)); return }
@@ -137,7 +151,7 @@ final class SyncService {
             respond(response)
             return
         case ("GET", "/ca.mobileconfig"):
-            guard let profile = certificates.mobileConfig(macName: macName) else {
+            guard let profile = certificates.mobileConfig(name: hostname) else {
                 respond(.text("No CA", status: 404))
                 return
             }
@@ -178,10 +192,10 @@ final class SyncService {
                         respond(.json(["error": "unauthorized"], status: 401))
                         return
                     }
-                    respond(.json(self.currentJSON()))
+                    respond(.json(self.currentJSON(for: device)))
                 }
             } else {
-                respond(.json(currentJSON()))
+                respond(.json(currentJSON(for: device)))
             }
 
         case ("GET", "/api/clipboard/raw"):
@@ -200,7 +214,7 @@ final class SyncService {
             respond(.data(png, contentType: "image/png"))
 
         case ("POST", "/api/clipboard"):
-            respond(receive(req, device: device.name))
+            respond(receive(req, device: device))
 
         case ("POST", "/api/unpair"):
             devices.unpair(id: device.id)
@@ -244,7 +258,7 @@ final class SyncService {
 
     // MARK: - Clipboard
 
-    private func receive(_ req: HTTPRequest, device: String) -> HTTPResponse {
+    private func receive(_ req: HTTPRequest, device: PairedDevice) -> HTTPResponse {
         let contentType = (req.headers["content-type"] ?? "").lowercased()
         var text: String?
 
@@ -262,10 +276,10 @@ final class SyncService {
             guard text.utf8.count <= Self.maxTextBytes else {
                 return .json(["error": "text too large"], status: 413)
             }
-            store.setText(text, source: device)
+            store.setText(text, source: device.name, sourceID: device.id)
         } else {
             // image/* or an untyped binary body (e.g. Shortcuts "File" with a photo).
-            switch store.setImage(req.body, source: device) {
+            switch store.setImage(req.body, source: device.name, sourceID: device.id) {
             case .ok: break
             case .tooLarge: return .json(["error": "image too large"], status: 413)
             case .unsupported: return .json(["error": "unsupported content"], status: 415)
@@ -276,15 +290,24 @@ final class SyncService {
         return .json(["ok": true, "version": store.version])
     }
 
-    private func currentJSON() -> [String: Any] {
-        var obj: [String: Any] = ["version": store.version]
+    private func currentJSON(for device: PairedDevice) -> [String: Any] {
+        var obj: [String: Any] = ["version": store.version, "epoch": epoch]
         if let item = store.current {
             obj["kind"] = item.kind.rawValue
             obj["source"] = item.source
+            // Lets the phone skip echoing back what it just sent.
+            obj["mine"] = item.sourceID == device.id
             obj["date"] = item.date.timeIntervalSince1970
             if let text = item.text { obj["text"] = text }
         }
         return obj
+    }
+
+    /// Versioned URLs (?v=<content hash>) never change, so phones may cache them for good.
+    private static func staticAsset(_ body: String, type: String, versioned: Bool) -> HTTPResponse {
+        var response = HTTPResponse.data(Data(body.utf8), contentType: type)
+        response.headers["Cache-Control"] = versioned ? "public, max-age=31536000, immutable" : "no-cache"
+        return response
     }
 
     /// Token only from headers — never from the URL, where it would leak into history and logs.
@@ -300,6 +323,11 @@ final class SyncService {
 
     /// LAN IPv4 addresses, Wi‑Fi/Ethernet (en*) first.
     static func localIPv4Addresses() -> [String] {
+        localIPv4Interfaces().map(\.address)
+    }
+
+    /// (interface, IPv4 address) pairs, Wi‑Fi/Ethernet (en*) first.
+    static func localIPv4Interfaces() -> [(interface: String, address: String)] {
         var results: [(name: String, address: String)] = []
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return [] }
@@ -323,6 +351,6 @@ final class SyncService {
         }
         return results
             .sorted { ($0.name.hasPrefix("en") ? 0 : 1, $0.name) < ($1.name.hasPrefix("en") ? 0 : 1, $1.name) }
-            .map(\.address)
+            .map { (interface: $0.name, address: $0.address) }
     }
 }

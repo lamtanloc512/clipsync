@@ -4,11 +4,12 @@
 
 Chia sẻ clipboard giữa Mac và điện thoại qua Wi‑Fi trong nhà, giống tính năng đồng bộ clipboard của KDE Connect. Điện thoại không cần cài app.
 
-- **Mac → điện thoại:** copy trên Mac là nội dung hiện gần như ngay lập tức trên điện thoại.
-- **Điện thoại → Mac:** gửi chữ hoặc ảnh từ điện thoại, rồi dán trên Mac bằng ⌘V.
+- **Tự động đồng bộ hai chiều:** copy trên Mac là có ngay trong clipboard điện thoại; copy trên điện thoại là có trên Mac, khi ClipSync đang mở trên điện thoại.
+- **Gửi ảnh từ điện thoại sang Mac:** rồi dán trên Mac bằng ⌘V.
 - **Chạy được trên Android và iPhone** qua trình duyệt. Có thể dùng thêm iOS Shortcuts / Android HTTP Shortcuts để gửi bằng một chạm.
 - **Riêng tư:** dữ liệu chỉ đi trong mạng nội bộ. Không tài khoản, không cloud, không theo dõi.
 - **Pair an toàn:** quét mã QR, xác nhận mã trùng khớp trên Mac. Kết nối được mã hoá bằng HTTPS.
+- **Không cần gõ địa chỉ IP:** trong mạng nội bộ, Mac được gọi bằng tên `clipsync.local`.
 - **Gọn nhẹ:** chỉ là một app nhỏ trên thanh menu, không dùng thư viện bên thứ ba.
 
 ## Yêu cầu
@@ -33,7 +34,7 @@ ClipSync hiện thành biểu tượng clipboard trên thanh menu. App không c�
 ## Pair điện thoại
 
 1. Bấm biểu tượng trên thanh menu → **Pair a Phone**. Một cửa sổ có mã QR sẽ mở ra.
-2. Quét mã QR bằng camera điện thoại.
+2. Quét mã QR bằng camera điện thoại. Trang `https://clipsync.local:8765` sẽ mở ra.
    - Nếu trang không mở được (một số máy Android không mở được địa chỉ `.local`), bấm **"Use the IP address instead"** trong cửa sổ QR rồi quét lại.
 3. Lần đầu, trình duyệt sẽ cảnh báo kết nối không riêng tư. Điều này là bình thường, vì Mac dùng chứng chỉ do chính nó tạo ra.
    - Android (Chrome): **Advanced** → **Proceed**
@@ -65,10 +66,22 @@ Chứng chỉ này chỉ hợp lệ với địa chỉ trong mạng nội bộ (
 
 ## Sử dụng
 
-### Trên điện thoại (trang web)
+### Trên điện thoại
 
-- **Mac clipboard:** hiện nội dung bạn copy gần nhất trên Mac. Bấm **Copy to phone** để chép vào điện thoại (chữ hoặc ảnh).
-- **Send to Mac:** gõ hoặc dán chữ rồi bấm **Send to Mac**. **Paste & send clipboard** gửi clipboard của điện thoại chỉ bằng một chạm, còn **Photo** dùng để gửi ảnh.
+Mở ClipSync từ màn hình chính và để nó mở. Hai công tắc trong **Auto sync** được bật sẵn:
+
+- **Copy from Mac automatically:** nội dung copy trên Mac sẽ vào clipboard điện thoại.
+- **Send this phone's clipboard automatically:** nội dung copy trên điện thoại sẽ được gửi sang Mac. Lần đầu, bấm **Allow** để ClipSync được đọc clipboard.
+
+"Tự động" đến mức nào tuỳ vào điện thoại, vì trình duyệt bảo vệ clipboard:
+
+| | Android (Chrome) | iPhone (Safari) |
+|---|---|---|
+| Mac → điện thoại | Copy ngay khi ClipSync đang hiện trên màn hình | Copy ở lần chạm kế tiếp bất kỳ đâu trong ClipSync |
+| Điện thoại → Mac | Gửi khi mở ClipSync và mỗi 2 giây khi đang mở | Bấm **Send clipboard to Mac** (iOS hỏi xác nhận Paste) |
+| Khi chạy nền | Bắt kịp ngay khi mở lại ClipSync | Như Android |
+
+Không trang web nào chạy nền được, nên điện thoại đồng bộ mỗi khi ClipSync đang mở. Mục **Latest** hiện nội dung đồng bộ gần nhất. **Settings** (⚙) có gửi thủ công (chữ hoặc ảnh), cài chứng chỉ, token cho Shortcuts và **Unpair**.
 
 ### Trên Mac (thanh menu)
 
@@ -108,6 +121,8 @@ Mẹo: gán shortcut vào **Back Tap** (Cài đặt → Trợ năng → Cảm �
 | Điện thoại báo "Mac not reachable" | Kiểm tra ClipSync có đang chạy và Mac có đang ngủ không. Một số Wi‑Fi công cộng hoặc Wi‑Fi khách chặn các thiết bị nói chuyện với nhau; khi đó hãy dùng hotspot của điện thoại. |
 | "This QR code expired or was already used" | Mở lại **Pair a Phone** trên Mac và quét mã mới. |
 | "This device is no longer paired" | Điện thoại đã bị unpair trên Mac. Pair lại. |
+| Điện thoại không tự gửi sang Mac | Bấm **Allow** trong Auto sync. Nếu trước đó đã chặn, vào cài đặt trang của Chrome cho `clipsync.local` và cho phép **Clipboard**. |
+| "New from your Mac — tap to copy" | Trình duyệt chỉ cho ghi clipboard khi ClipSync đang hiện trên màn hình (Android) hoặc khi bạn chạm (iPhone). Chạm vào bất kỳ đâu. |
 | Firewall của macOS chặn kết nối | **System Settings → Network → Firewall → Options** → cho phép ClipSync. |
 | Mật khẩu không hiện trên điện thoại | Đây là chủ ý. Nội dung copy từ trình quản lý mật khẩu không bao giờ được chia sẻ. |
 
@@ -118,6 +133,8 @@ Mẹo: gán shortcut vào **Back Tap** (Cài đặt → Trợ năng → Cảm �
 - Muốn pair phải có mã QR (chỉ hiện trên màn hình Mac của bạn) và phải bấm **Accept**.
 - Mỗi điện thoại có khoá riêng, có thể thu hồi bất cứ lúc nào trong **Paired Devices**.
 - **Điện thoại đã pair đọc được mọi thứ bạn copy và có thể thay đổi clipboard của Mac.** Chỉ pair thiết bị của chính bạn, và unpair ngay nếu mất điện thoại.
+- Khi bật **Send this phone's clipboard automatically**, mọi thứ bạn copy trên điện thoại lúc ClipSync đang mở (kể cả mật khẩu) sẽ được gửi sang Mac. Tắt công tắc này nếu không muốn.
+- Trong mạng, Mac xuất hiện với tên `clipsync.local`; mã QR và trình duyệt không hiện IP hay tên Mac của bạn.
 
 Mô hình mối đe doạ đầy đủ nằm trong [SECURITY.md](SECURITY.md) (tiếng Anh). Nếu phát hiện lỗ hổng, vui lòng báo cáo riêng theo hướng dẫn trong file đó.
 

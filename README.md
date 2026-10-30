@@ -4,11 +4,12 @@
 
 Share your clipboard between your Mac and your phone over your local Wi‑Fi, like KDE Connect's clipboard sync, with no app to install on the phone.
 
-- **Mac → phone:** copy something on your Mac and it appears on your phone almost instantly.
-- **Phone → Mac:** send text or photos from your phone and paste them on your Mac with ⌘V.
+- **Automatic sync both ways:** copy on your Mac and it's on your phone's clipboard; copy on your phone and it's on your Mac — while ClipSync is open on the phone.
+- **Phone → Mac photos:** send pictures from your phone and paste them on your Mac with ⌘V.
 - **Works with Android and iPhone** in the browser, plus optional one-tap iOS Shortcuts / Android HTTP Shortcuts.
 - **Private by design:** everything stays on your local network. No account, no cloud, no tracking.
 - **Secure pairing:** scan a QR code, confirm a matching code on the Mac, and the connection is encrypted with HTTPS.
+- **No IP addresses to type:** your Mac is reachable as `clipsync.local` on your network.
 - **Lightweight:** a small menu‑bar app with no third‑party dependencies.
 
 ## Requirements
@@ -33,7 +34,7 @@ ClipSync appears as a clipboard icon in the menu bar. It has no Dock icon.
 ## Pair your phone
 
 1. Click the menu‑bar icon → **Pair a Phone**. A window with a QR code opens.
-2. Scan the QR code with your phone's camera.
+2. Scan the QR code with your phone's camera. It opens `https://clipsync.local:8765`.
    - If the page does not open (some Android phones can't open `.local` addresses), click **"Use the IP address instead"** in the QR window and scan again.
 3. The first time, the browser warns that the connection is not private. This is expected: your Mac uses its own certificate.
    - Android (Chrome): **Advanced** → **Proceed**
@@ -65,10 +66,22 @@ The certificate only works for local network addresses (`192.168.x.x`, `10.x.x.x
 
 ## Using ClipSync
 
-### On the phone (web page)
+### On the phone
 
-- **Mac clipboard:** shows whatever you last copied on the Mac. Tap **Copy to phone** to copy it (text or image).
-- **Send to Mac:** type or paste text and tap **Send to Mac**. **Paste & send clipboard** sends your phone's clipboard in one tap, and **Photo** sends a picture.
+Open ClipSync from your home screen and leave it open. Both switches under **Auto sync** are on by default:
+
+- **Copy from Mac automatically:** whatever you copy on the Mac lands on the phone's clipboard.
+- **Send this phone's clipboard automatically:** whatever you copy on the phone is sent to the Mac. The first time, tap **Allow** so ClipSync may read your clipboard.
+
+What "automatic" means depends on the phone, because browsers protect the clipboard:
+
+| | Android (Chrome) | iPhone (Safari) |
+|---|---|---|
+| Mac → phone | Copied instantly while ClipSync is on screen | Copied on your next tap anywhere in ClipSync |
+| Phone → Mac | Sent when you open ClipSync and every 2 s while it's on screen | Tap **Send clipboard to Mac** (iOS asks you to confirm Paste) |
+| In the background | Catches up as soon as you open ClipSync again | Same |
+
+No web page can run in the background, so the phone syncs whenever ClipSync is open. **Latest** shows the last synced item, and **Settings** (⚙) has manual sending (text or a photo), certificate setup, the Shortcuts token and **Unpair**.
 
 ### On the Mac (menu bar)
 
@@ -108,6 +121,8 @@ Tip: assign a shortcut to **Back Tap** (Settings → Accessibility → Touch →
 | "Mac not reachable" on the phone | Check that ClipSync is running and the Mac isn't asleep. Some public or guest Wi‑Fi networks block devices from talking to each other; use your phone's hotspot instead. |
 | "This QR code expired or was already used" | Open **Pair a Phone** on the Mac again and scan the new code. |
 | "This device is no longer paired" | The phone was unpaired on the Mac. Pair it again. |
+| Nothing is sent from the phone automatically | Tap **Allow** under Auto sync. If you blocked it before, allow **Clipboard** in Chrome's site settings for `clipsync.local`. |
+| "New from your Mac — tap to copy" | The browser only lets ClipSync write to the clipboard while it's on screen (Android) or when you tap (iPhone). Tap anywhere. |
 | The macOS firewall blocks connections | **System Settings → Network → Firewall → Options** → allow ClipSync. |
 | Passwords don't show up on the phone | That's intentional. Copies made by password managers are never shared. |
 
@@ -118,6 +133,8 @@ Tip: assign a shortcut to **Back Tap** (Settings → Accessibility → Touch →
 - Pairing requires both the QR code (only visible on your Mac's screen) and a click on **Accept**.
 - Each phone gets its own key, which you can revoke at any time from **Paired Devices**.
 - **A paired phone can read everything you copy and change your Mac's clipboard.** Only pair your own devices, and unpair a phone if you lose it.
+- With **Send this phone's clipboard automatically** on, anything you copy on the phone while ClipSync is open — including passwords — goes to your Mac. Turn it off if you don't want that.
+- Your Mac appears on the network as `clipsync.local`; neither its IP address nor its name is shown in the QR code or the browser.
 
 Read the full threat model in [SECURITY.md](SECURITY.md). Found a vulnerability? Please report it privately as described there.
 

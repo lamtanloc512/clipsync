@@ -17,6 +17,25 @@ permissions:
   contents: read
 
 jobs:
+  # The phone client is compiled (Tailwind + Basecoat Lyra) into WebAssets.generated.swift;
+  # make sure the committed file matches web/.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Rebuild web assets
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Generated file is up to date
+        run: git diff --exit-code -- Sources/ClipSync/WebAssets.generated.swift
+
   build:
     runs-on: macos-15
     steps:
@@ -46,8 +65,12 @@ jobs:
 
           echo "--- web client over HTTPS, with security headers and no CORS"
           curl -skf -D headers.txt $URL/ | grep -q "<title>ClipSync</title>"
-          grep -qi '^content-security-policy:' headers.txt
+          grep -i '^content-security-policy:' headers.txt | grep -q "script-src 'self';"
           if grep -qi '^access-control-allow-origin' headers.txt; then echo 'CORS header present'; exit 1; fi
+          curl -skf $URL/app.css | grep -q '\.btn'
+          curl -skf $URL/app.js | grep -q 'ClipSync phone client'
+          curl -skf $URL/manifest.webmanifest | python3 -m json.tool > /dev/null
+
 
           echo "--- certificate chain validates against the ClipSync CA"
           curl -skf $URL/ca.crt -o ca.der
@@ -56,6 +79,11 @@ jobs:
           echo | openssl s_client -connect localhost:8765 -servername localhost 2>/dev/null \
             | openssl x509 -noout -subject -ext subjectAltName
           curl -sf --cacert ca.pem -o /dev/null $URL/
+
+          echo "--- clipsync.local is published over mDNS and covered by the certificate"
+          for i in $(seq 1 15); do dscacheutil -q host -a name clipsync.local | grep -q ip_address && break; sleep 1; done
+          dscacheutil -q host -a name clipsync.local | grep ip_address
+          curl -sf --cacert ca.pem -o /dev/null https://clipsync.local:8765/
 
           echo "--- API requires pairing; token in the URL is not accepted"
           test "$(status $URL/api/clipboard)" = 401
