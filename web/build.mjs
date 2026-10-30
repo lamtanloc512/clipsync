@@ -71,6 +71,9 @@ const html = readFileSync(join(web, 'index.html'), 'utf8')
   .replace('__JS_VERSION__', short(js));
 const manifest = readFileSync(join(web, 'manifest.webmanifest'), 'utf8');
 const icon = readFileSync(join(web, 'icon.svg'), 'utf8');
+// PNG icons (rendered from assets/AppIcon.svg by assets/make-icons.mjs), embedded as base64.
+const pngIcons = ['icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
+const pngBase64 = Object.fromEntries(pngIcons.map((f) => [f, readFileSync(join(web, f)).toString('base64')]));
 
 // --- Swift ---------------------------------------------------------------------
 // Raw string literal whose delimiter cannot occur in (or interpolate into) the content.
@@ -94,6 +97,11 @@ enum WebAssets {
     static let manifest = ${swiftString(manifest)}
 
     static let iconSVG = ${swiftString(icon)}
+
+    /// Path → base64 PNG.
+    static let pngIcons: [String: String] = [
+${pngIcons.map((f) => `        "/${f}": "${pngBase64[f]}",`).join('\n')}
+    ]
 }
 `;
 writeFileSync(output, swift);
@@ -105,4 +113,5 @@ for (const [name, body] of Object.entries({ 'index.html': html, 'app.css': css, 
   'manifest.webmanifest': manifest, 'icon.svg': icon })) {
   writeFileSync(join(dist, name), body);
 }
+for (const f of pngIcons) writeFileSync(join(dist, f), Buffer.from(pngBase64[f], 'base64'));
 console.log(`wrote ${output} (css ${css.length} B, js ${js.length} B)`);

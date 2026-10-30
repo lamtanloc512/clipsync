@@ -71,6 +71,13 @@ jobs:
           curl -skf $URL/app.js | grep -q 'ClipSync phone client'
           curl -skf $URL/manifest.webmanifest | python3 -m json.tool > /dev/null
 
+          echo "--- app icon is bundled and the web icons are served"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' ClipSync.app/Contents/Info.plist)" = AppIcon
+          file ClipSync.app/Contents/Resources/AppIcon.icns | grep -q 'Mac OS X icon'
+          for icon in icon-180 icon-192 icon-512 icon-maskable-512; do
+            curl -skf $URL/$icon.png -o $icon.png && file $icon.png | grep -q 'PNG image'
+          done
+
 
           echo "--- certificate chain validates against the ClipSync CA"
           curl -skf $URL/ca.crt -o ca.der

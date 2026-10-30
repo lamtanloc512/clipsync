@@ -33,7 +33,9 @@ npm run build                      # regenerates WebAssets.generated.swift
 BASECOAT_DIR=../../basecoat npm run build   # use a local Basecoat checkout instead
 ```
 
-`npm run build` also writes plain files to `web/.cache/dist/` for previewing in a desktop browser. Never edit the generated Swift file by hand; CI fails if it doesn't match `web/`.
+`npm run build` also writes plain files to `web/.cache/dist/` for previewing in a desktop browser.
+
+The app icon's source is `assets/AppIcon.svg`. After changing it, run `node assets/make-icons.mjs` (needs Playwright with Chromium) to regenerate `assets/AppIcon.icns` and the web icons, then `cd web && npm run build`. Never edit the generated Swift file by hand; CI fails if it doesn't match `web/`.
 
 `swift run` works for most development. Features that need a real app bundle, such as **Launch at Login**, only work with `build-app.sh`.
 

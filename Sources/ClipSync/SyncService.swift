@@ -77,6 +77,7 @@ final class SyncService {
     static let maxTextBytes = 2 * 1024 * 1024
     private static let publicRoutes: Set<String> = [
         "GET /", "GET /index.html", "GET /app.css", "GET /app.js", "GET /manifest.webmanifest", "GET /icon.svg",
+        "GET /icon-180.png", "GET /icon-192.png", "GET /icon-512.png", "GET /icon-maskable-512.png",
         "GET /ca.crt", "GET /ca.mobileconfig",
         "POST /api/pair", "GET /api/pair/status",
     ]
@@ -143,6 +144,12 @@ final class SyncService {
             return
         case ("GET", "/icon.svg"):
             respond(Self.staticAsset(WebAssets.iconSVG, type: "image/svg+xml", versioned: false))
+            return
+        case ("GET", let path) where WebAssets.pngIcons[path] != nil:
+            var response = HTTPResponse.data(Data(base64Encoded: WebAssets.pngIcons[path] ?? "") ?? Data(),
+                                             contentType: "image/png")
+            response.headers["Cache-Control"] = "no-cache"
+            respond(response)
             return
         case ("GET", "/ca.crt"):
             guard let der = certificates.caCertificateDER else { respond(.text("No CA", status: 404)); return }
