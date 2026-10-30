@@ -152,7 +152,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             pairingWindow = controller
         }
         let secret = service.devices.issuePairingSecret()
-        pairingWindow?.show(urls: service.pairingURLs(secret: secret),
+        pairingWindow?.show(urls: service.pairingURLs(secret: secret), code: secret,
                             caFingerprint: service.certificates.caFingerprint)
     }
 

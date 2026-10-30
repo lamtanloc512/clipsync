@@ -41,11 +41,16 @@ ClipSync hiện thành biểu tượng clipboard trên thanh menu. App không c�
    - iPhone (Safari): **Show Details** → **visit this website** → **Visit Website**
 4. Đặt tên cho điện thoại rồi bấm **Pair**. Một mã 4 số sẽ hiện ra.
 5. Mac hiện thông báo *"… wants to pair"* kèm một mã. Nếu hai mã trùng nhau, bấm **Accept**.
-6. Thêm trang vào màn hình chính để mở như một app:
-   - Chrome: menu → **Add to Home screen**
-   - Safari: **Share** → **Add to Home Screen**
+6. Cài ClipSync thành app (xem bên dưới).
 
 Mỗi mã QR chỉ dùng được một lần và hết hạn sau 10 phút. Muốn pair thêm máy khác, mở lại **Pair a Phone**.
+
+### Cài ClipSync thành app
+
+ClipSync là Progressive Web App (PWA): cài xong là mở toàn màn hình từ màn hình chính như app bình thường.
+
+- **Android:** cài chứng chỉ trước (mục tiếp theo) — Chrome chỉ cho cài app từ trang được tin cậy. Sau đó bấm **Install** trong ClipSync (hoặc menu Chrome → **Install app**). App đã cài còn xuất hiện trong menu **Chia sẻ** của Android: chia sẻ ảnh, video, file hay link từ bất kỳ app nào thẳng sang Mac.
+- **iPhone / iPad:** trong Safari bấm **Share → Add to Home Screen**. Mở ClipSync từ màn hình chính và pair ngay trong app: trên iPhone, app đã cài không dùng chung bộ nhớ với Safari, nên thay vì quét QR hãy gõ **mã (code)** hiện dưới mã QR trên Mac.
 
 ### Cài chứng chỉ (khuyến nghị)
 

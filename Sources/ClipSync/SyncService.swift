@@ -91,6 +91,7 @@ final class SyncService {
     static let maxTextBytes = 2 * 1024 * 1024
     private static let publicRoutes: Set<String> = [
         "GET /", "GET /index.html", "GET /app.css", "GET /app.js", "GET /manifest.webmanifest", "GET /icon.svg",
+        "GET /sw.js",
         "GET /icon-180.png", "GET /icon-192.png", "GET /icon-512.png", "GET /icon-maskable-512.png",
         "GET /ca.crt", "GET /ca.mobileconfig",
         "POST /api/pair", "GET /api/pair/status",
@@ -112,6 +113,14 @@ final class SyncService {
         }
         if Self.publicRoutes.contains("\(head.method) \(head.path)") {
             return .accept(maxBody: 4096)
+        }
+        // Android "Share → ClipSync" is handled by the service worker. If it isn't active yet, the
+        // share lands here: send the browser back to the app without reading the upload.
+        if head.method == "POST", head.path == "/share-target" {
+            var redirect = HTTPResponse(status: 303, contentType: "text/plain; charset=utf-8",
+                                        body: Data("ClipSync couldn’t take the share. Open ClipSync and try again.".utf8))
+            redirect.headers["Location"] = "/?share-unavailable=1"
+            return .reject(redirect)
         }
         // Download links carry their own short-lived ticket instead of the device token (browsers
         // can't add headers to a download).
@@ -168,7 +177,7 @@ final class SyncService {
             // No inline scripts at all: the client is served as /app.js.
             page.headers["Content-Security-Policy"] =
                 "default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; " +
-                "img-src 'self' blob:; connect-src 'self'; manifest-src 'self'; " +
+                "img-src 'self' blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; " +
                 "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
             respond(page)
             return
@@ -183,6 +192,9 @@ final class SyncService {
             return
         case ("GET", "/icon.svg"):
             respond(Self.staticAsset(WebAssets.iconSVG, type: "image/svg+xml", request: req))
+            return
+        case ("GET", "/sw.js"):
+            respond(Self.staticAsset(WebAssets.serviceWorker, type: "text/javascript; charset=utf-8", request: req))
             return
         case ("GET", let path) where WebAssets.pngIcons[path] != nil:
             var response = HTTPResponse.data(Data(base64Encoded: WebAssets.pngIcons[path] ?? "") ?? Data(),

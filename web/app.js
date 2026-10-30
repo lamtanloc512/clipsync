@@ -92,6 +92,7 @@
     $('pairView').hidden = false;
     $('pairForm').hidden = !pairSecret;
     $('pairScan').hidden = !!pairSecret;
+    $('codeForm').hidden = !!pairSecret;
     $('pairWait').hidden = true;
     $('pairMsg').textContent = message;
     $('deviceName').value = store.get('clipsync.deviceName') || guessName;
@@ -133,6 +134,17 @@
 
   $('pairCancel').addEventListener('click', () => { pairing = null; showPair(); });
 
+  // Typing the code instead of scanning: needed for an iPhone home-screen app, which can't
+  // receive the QR link (it opens Safari, whose storage is separate).
+  $('codeForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const code = $('codeInput').value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!code) return;
+    pairSecret = code;
+    $('codeInput').value = '';
+    showPair();
+  });
+
   async function waitForPairing(id) {
     while (pairing === id) {
       try {
@@ -173,6 +185,7 @@
     $('autoSend').checked = prefs.autoSend;
     version = -1;
     const mySession = ++session;
+    takeShared();
     refreshSendMode().then(() => {
       // Phone first: if something new was copied here while ClipSync was closed, send it
       // before applying whatever the Mac has.
@@ -542,6 +555,83 @@
       toast('Could not reach your Mac', 'error');
     }
   });
+
+  // ---------- Android share sheet (Web Share Target) ----------
+  // sw.js parks shared items in a cache and opens /?shared=1; send them now that we have the token.
+  async function takeShared() {
+    if (!new URLSearchParams(location.search).has('shared')) return;
+    history.replaceState(null, '', '/');
+    if (!('caches' in window)) return;
+    const cache = await caches.open('clipsync-share');
+    for (const request of await cache.keys()) {
+      const response = await cache.match(request);
+      await cache.delete(request);
+      if (!response) continue;
+      if (new URL(request.url).pathname === '/shared/text') {
+        const text = await response.text();
+        if (await postClip(text, 'text/plain; charset=utf-8')) {
+          markSynced(await hashText(text));
+          toast('Shared to your Mac’s clipboard');
+        }
+      } else {
+        const blob = await response.blob();
+        const name = decodeURIComponent(response.headers.get('X-Filename') || 'Shared%20file');
+        const file = new File([blob], name, { type: blob.type });
+        uploadQueue.push({ file, row: addUploadRow(file) });
+      }
+    }
+    nextUpload();
+  }
+
+  // ---------- Install as an app (PWA) ----------
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  let installPrompt = null;
+  let workerFailed = false;
+
+  if ('serviceWorker' in navigator) {
+    // Browsers refuse service workers (and so installation) until the Mac's certificate is trusted.
+    navigator.serviceWorker.register('/sw.js').catch(() => { workerFailed = true; updateInstall(); });
+  }
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    updateInstall();
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    updateInstall();
+    toast('ClipSync installed');
+  });
+
+  function updateInstall() {
+    const card = $('installCard');
+    let text = '';
+    if (!standalone && store.get('clipsync.installDismissed') !== '1') {
+      if (installPrompt) {
+        text = 'Open ClipSync like an app, and send photos, videos and links straight from Android’s Share menu.';
+      } else if (isIOS) {
+        text = 'Tap Share, then “Add to Home Screen”. Open ClipSync from the Home Screen and pair it there with the code shown under the QR code on your Mac.';
+      } else if (workerFailed) {
+        text = 'To install ClipSync as an app, first trust your Mac’s certificate (⚙ Settings), then reload this page.';
+      }
+    }
+    $('installText').textContent = text;
+    $('installBtn').hidden = !installPrompt;
+    card.hidden = !text;
+  }
+
+  $('installBtn').addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => null);
+    installPrompt = null;
+    updateInstall();
+  });
+  $('installDismiss').addEventListener('click', () => {
+    store.set('clipsync.installDismissed', '1');
+    updateInstall();
+  });
+  updateInstall();
 
   // ---------- Settings ----------
   const settings = $('settings');

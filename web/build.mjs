@@ -76,6 +76,11 @@ const html = readFileSync(join(web, 'index.html'), 'utf8')
   .replace('__CSS_VERSION__', short(css))
   .replace('__JS_VERSION__', short(js));
 const manifest = readFileSync(join(web, 'manifest.webmanifest'), 'utf8');
+// The service worker's version covers everything it caches, so any change ships a new worker.
+const serviceWorker = readFileSync(join(web, 'sw.js'), 'utf8')
+  .replace('__SW_VERSION__', short(html + css + js + manifest))
+  .replace('__CSS_VERSION__', short(css))
+  .replace('__JS_VERSION__', short(js));
 const icon = readFileSync(join(web, 'icon.svg'), 'utf8');
 // PNG icons (rendered from assets/AppIcon.svg by assets/make-icons.mjs), embedded as base64.
 const pngIcons = ['icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
@@ -108,6 +113,8 @@ enum WebAssets {
 
     static let manifest = ${swiftString(manifest)}
 
+    static let serviceWorker = ${swiftString(serviceWorker)}
+
     static let iconSVG = ${swiftString(icon)}
 
     /// Path → base64 PNG.
@@ -122,7 +129,7 @@ writeFileSync(output, swift);
 const dist = join(cache, 'dist');
 mkdirSync(dist, { recursive: true });
 for (const [name, body] of Object.entries({ 'index.html': html, 'app.css': css, 'app.js': js,
-  'manifest.webmanifest': manifest, 'icon.svg': icon })) {
+  'manifest.webmanifest': manifest, 'icon.svg': icon, 'sw.js': serviceWorker })) {
   writeFileSync(join(dist, name), body);
 }
 for (const f of pngIcons) writeFileSync(join(dist, f), Buffer.from(pngBase64[f], 'base64'));

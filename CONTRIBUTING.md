@@ -24,7 +24,7 @@ swift run                    # run from the terminal (logs go to stderr)
 
 ### Phone web client
 
-The phone UI lives in `web/` (`index.html`, `app.js`, `app.css`). It is styled with Tailwind CSS v4 and [Basecoat](https://github.com/lamtanloc512/basecoat) using the **Lyra** style pack, pinned to a commit in `web/build.mjs`. The build compiles everything into `Sources/ClipSync/WebAssets.generated.swift`, which is committed, so building the Mac app never needs Node.
+The phone UI lives in `web/` (`index.html`, `app.js`, `app.css`, and `sw.js`, the service worker that makes it an installable PWA, caches the app shell and receives Android shares). It is styled with Tailwind CSS v4 and [Basecoat](https://github.com/lamtanloc512/basecoat) using the **Lyra** style pack, pinned to a commit in `web/build.mjs`. The build compiles everything into `Sources/ClipSync/WebAssets.generated.swift`, which is committed, so building the Mac app never needs Node.
 
 ```bash
 cd web
@@ -111,7 +111,8 @@ All endpoints are HTTPS on port 8765. Authenticated endpoints need `X-Token: <to
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/` | – | Web client (`/app.css`, `/app.js`, `/manifest.webmanifest`, `/icon.svg`) |
+| GET | `/` | – | Web client (`/app.css`, `/app.js`, `/sw.js`, `/manifest.webmanifest`, icons) |
+| POST | `/share-target` | – | Android Web Share Target. Normally handled by the service worker; without one the server answers 303 without reading the body |
 | GET | `/ca.crt`, `/ca.mobileconfig` | – | CA certificate (DER) and iOS configuration profile |
 | POST | `/api/pair` | QR secret | `{"name", "secret"}` → `{id, code}` |
 | GET | `/api/pair/status?id=&wait=25` | – | `{state: pending/accepted/rejected/expired, token?}` |

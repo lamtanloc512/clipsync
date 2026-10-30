@@ -41,11 +41,16 @@ ClipSync appears as a clipboard icon in the menu bar. It has no Dock icon.
    - iPhone (Safari): **Show Details** → **visit this website** → **Visit Website**
 4. Give your phone a name and tap **Pair**. A 4‑digit code appears.
 5. Your Mac shows *"… wants to pair"* with a code. If both codes match, click **Accept**.
-6. Add the page to your home screen so it opens like an app:
-   - Chrome: menu → **Add to Home screen**
-   - Safari: **Share** → **Add to Home Screen**
+6. Install ClipSync as an app (see below).
 
 Each QR code works once and expires after 10 minutes. To pair another phone, open **Pair a Phone** again.
+
+### Install ClipSync as an app
+
+ClipSync is a Progressive Web App: once installed it opens full screen from your home screen like a normal app.
+
+- **Android:** install the certificate first (next section) — Chrome only installs apps from trusted sites. Then tap **Install** in ClipSync (or Chrome menu → **Install app**). The installed app also appears in Android's **Share** menu: share photos, videos, files or links from any app straight to your Mac.
+- **iPhone / iPad:** in Safari tap **Share → Add to Home Screen**. Open ClipSync from the Home Screen and pair it there: on iPhone the installed app doesn't share Safari's storage, so instead of scanning, type the **code** shown under the QR code on your Mac.
 
 ### Install the certificate (recommended)
 

@@ -92,7 +92,13 @@ jobs:
           done
           grep -q '\.btn' plain-app.css
           grep -q 'ClipSync phone client' plain-app.js )
-          curl -skf $URL/manifest.webmanifest | python3 -m json.tool > /dev/null
+          curl -skf $URL/manifest.webmanifest | python3 -c 'import json,sys; m=json.load(sys.stdin); assert m["share_target"]["action"]=="/share-target" and m["display"]=="standalone", m'
+
+          echo "--- PWA: service worker is served; shares without an active worker bounce back unread"
+          curl -skf -D sw.h $URL/sw.js | grep -q "clipsync-shell-"
+          grep -qi '^content-type: text/javascript' sw.h
+          grep -i '^content-security-policy:' headers.txt | grep -q "worker-src 'self'"
+          test "$(curl -sk -o /dev/null -w '%{http_code} %{redirect_url}' -X POST -F files=@/etc/hosts $URL/share-target)" = "303 $URL/?share-unavailable=1"
 
           echo "--- app icon is bundled and the web icons are served"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' ClipSync.app/Contents/Info.plist)" = AppIcon

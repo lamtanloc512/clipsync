@@ -484,6 +484,7 @@ final class HTTPServer {
         switch status {
         case 200: return "OK"
         case 204: return "No Content"
+        case 303: return "See Other"
         case 400: return "Bad Request"
         case 401: return "Unauthorized"
         case 403: return "Forbidden"

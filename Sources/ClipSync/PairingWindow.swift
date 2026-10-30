@@ -8,6 +8,7 @@ final class PairingWindowController: NSWindowController, NSWindowDelegate {
     private let urlField = NSTextField(labelWithString: "")
     private let hintField = NSTextField(wrappingLabelWithString: "")
     private let fingerprintField = NSTextField(wrappingLabelWithString: "")
+    private let codeField = NSTextField(labelWithString: "")
     private let switchButton = NSButton(title: "", target: nil, action: nil)
     private var urls: [String] = []
     private var urlIndex = 0
@@ -19,7 +20,7 @@ final class PairingWindowController: NSWindowController, NSWindowDelegate {
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 660),
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 720),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -50,6 +51,7 @@ final class PairingWindowController: NSWindowController, NSWindowDelegate {
         2. First time only: the browser warns about the certificate → “Show Details” → “visit this website”.
            Safest: do this first pairing on the phone’s own hotspot (connect the Mac to it).
         3. Tap Pair, then Accept here when the codes match.
+        Installed ClipSync on an iPhone home screen? Type the code above in the app instead.
         The code works once and expires in 10 minutes or when this window closes.
         Tip: install the certificate from the page’s Settings to remove the warning for good.
         """
@@ -66,7 +68,11 @@ final class PairingWindowController: NSWindowController, NSWindowDelegate {
         switchButton.bezelStyle = .inline
         switchButton.font = .systemFont(ofSize: 11)
 
-        let stack = NSStackView(views: [imageView, urlField, switchButton, hintField, fingerprintField])
+        codeField.font = .monospacedSystemFont(ofSize: 15, weight: .semibold)
+        codeField.alignment = .center
+        codeField.isSelectable = true
+
+        let stack = NSStackView(views: [imageView, urlField, codeField, switchButton, hintField, fingerprintField])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12
@@ -77,7 +83,12 @@ final class PairingWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     /// `urls[0]` is the .local name, `urls[1]` (if any) the IP fallback.
-    func show(urls: [String], caFingerprint: String?) {
+    /// `code` is the one-time pairing secret, shown for typing into apps that can't scan the QR.
+    func show(urls: [String], code: String, caFingerprint: String?) {
+        codeField.stringValue = "Code: " + stride(from: 0, to: code.count, by: 4).map { offset -> String in
+            let start = code.index(code.startIndex, offsetBy: offset)
+            return String(code[start..<(code.index(start, offsetBy: 4, limitedBy: code.endIndex) ?? code.endIndex)])
+        }.joined(separator: "-")
         let wasVisible = isVisible
         self.urls = urls
         if urlIndex >= urls.count { urlIndex = 0 }

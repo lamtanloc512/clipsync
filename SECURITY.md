@@ -35,6 +35,7 @@ ClipSync runs an HTTPS server on your Mac that phones on the same local network 
 | Leaked CA key | The CA has name constraints (private IPs, `*.local`, `localhost` only), an EKU limited to `serverAuth`, and no email/URI names. It cannot impersonate public websites |
 | Leaked token | Each device has its own 32-character token. Only its SHA-256 is stored, tokens are accepted in headers only (not URLs), and devices can be unpaired individually |
 | Denial of service | At most 64 connections, a 20 s request deadline, and no request body before authentication (4 KB limit) |
+| Service worker (installed app) | Caches only the app shell (HTML, CSS, JS, icons); `/api/*` and downloads always go to the Mac. Shared items wait in a local cache only until the app sends them |
 | Files sent by a paired device | Streamed to disk (never into memory) up to a size cap and only with enough free space; names are stripped of paths, control characters and leading dots and never overwrite existing files; files get the `com.apple.quarantine` attribute so Gatekeeper treats them as downloads |
 | File downloads | Only files that are currently on the clipboard/history can be downloaded, by item id; download links carry a random, 10-minute ticket instead of the device token |
 | Malicious images from a paired device | Only PNG/JPEG/HEIC are accepted. The pixel count (≤ 50 MP) is checked before decoding. Text is limited to 2 MB |

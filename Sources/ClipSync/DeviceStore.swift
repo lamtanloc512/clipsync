@@ -78,7 +78,9 @@ final class DeviceStore {
     // MARK: - Pairing secret
 
     func issuePairingSecret() -> String {
-        let secret = randomString(length: 24)
+        // 12 characters from a 31-letter alphabet (~59 bits): short enough to type into an iPhone
+        // home-screen app, far too many to guess in the 10 minutes it lives (and Accept is still needed).
+        let secret = randomString(length: 12)
         pairingSecret = secret
         pairingSecretTimer?.invalidate()
         pairingSecretTimer = scheduleTimer(after: Self.pairingSecretLifetime) { [weak self] _ in
