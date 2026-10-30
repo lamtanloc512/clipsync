@@ -56,6 +56,16 @@ jobs:
 
       - name: Smoke test (HTTPS server, certificates, security checks)
         run: |
+          # A pre-paired test device, so authenticated endpoints can be exercised without the UI.
+          TOKEN=ci-test-token-$(uuidgen)
+          echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          mkdir -p ~/Library/Application\ Support/ClipSync
+          python3 - "$TOKEN" <<'PY'
+          import hashlib, json, os, sys
+          path = os.path.expanduser("~/Library/Application Support/ClipSync/devices.json")
+          json.dump([{"id": "ci", "name": "CI", "tokenHash": hashlib.sha256(sys.argv[1].encode()).hexdigest(),
+                      "pairedAt": 0}], open(path, "w"))
+          PY
           ./ClipSync.app/Contents/MacOS/ClipSync > app.log 2>&1 &
           APP_PID=$!
           trap 'kill $APP_PID 2>/dev/null || true; echo "--- app log"; cat app.log' EXIT
@@ -132,6 +142,49 @@ jobs:
           echo "--- cross-origin requests and foreign Host headers are refused"
           test "$(status -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' $URL/api/pair)" = 403
           test "$(status -H 'Host: evil.example' $URL/)" = 400
+
+          echo "--- file transfer: 300 MB upload is streamed to disk, not memory"
+          ( set -o pipefail
+          head -c 314572800 /dev/urandom > big.bin
+          want=$(shasum -a 256 big.bin | cut -c1-64)
+          peak=0
+          ( while kill -0 $APP_PID 2>/dev/null; do ps -o rss= -p $APP_PID; sleep 0.2; done ) > rss.log &
+          SAMPLER=$!
+          curl -skf -H "X-Token: $TOKEN" -H "X-Filename: big%20video.mov" -H "Content-Type: video/quicktime" \
+            --data-binary @big.bin $URL/api/files | tee upload.json
+          kill $SAMPLER 2>/dev/null || true
+          peak=$(sort -n rss.log | tail -1)
+          echo "peak RSS during upload: $((peak / 1024)) MB"
+          test "$peak" -lt 262144   # < 256 MB while receiving 300 MB
+          saved=~/Downloads/"big video.mov"
+          test "$(shasum -a 256 "$saved" | cut -c1-64)" = "$want"
+          xattr -p com.apple.quarantine "$saved" | grep -q ClipSync
+          ls ~/Downloads/.clipsync-*.part 2>/dev/null && { echo "partial upload left behind"; exit 1; } || true
+
+          echo "--- the file becomes a clipboard item phones can download via a ticket"
+          info=$(curl -skf -H "X-Token: $TOKEN" $URL/api/clipboard)
+          echo "$info" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["kind"]=="file" and d["text"]=="big video.mov" and d["size"]==314572800, d'
+          id=$(echo "$info" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          dl=$(curl -skf -X POST -H "X-Token: $TOKEN" "$URL/api/files/ticket?id=$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["url"])')
+          curl -skf -D dl.h "$URL$dl" -o downloaded.bin
+          grep -qi '^content-disposition: attachment' dl.h
+          test "$(shasum -a 256 downloaded.bin | cut -c1-64)" = "$want"
+          test "$(status "$URL/dl/not-a-ticket/x")" = 410
+          test "$(status -X POST "$URL/api/files/ticket?id=$id")" = 401
+
+          echo "--- unauthenticated uploads are refused, file names are sanitised"
+          test "$(status -X POST -H 'X-Filename: x' --data-binary @big.bin $URL/api/files)" = 401
+          echo hello > small.txt
+          curl -skf -H "X-Token: $TOKEN" -H "X-Filename: ..%2F..%2Fevil.sh" --data-binary @small.txt $URL/api/files
+          test -f ~/Downloads/evil.sh
+          test ! -e ~/evil.sh
+
+          echo "--- a file copied in Finder is offered to phones"
+          echo "from finder" > ~/finder-copy.txt
+          osascript -e 'set the clipboard to (POSIX file "'"$HOME"'/finder-copy.txt")'
+          sleep 1.5
+          curl -skf -H "X-Token: $TOKEN" $URL/api/clipboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["kind"]=="file" and d["text"]=="finder-copy.txt", d'
+          rm -f big.bin downloaded.bin )
 
           echo "--- iOS profile is a valid plist"
           curl -skf $URL/ca.mobileconfig -o profile.mobileconfig

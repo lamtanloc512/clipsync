@@ -85,15 +85,38 @@
 
       <section class="card">
         <header>
+          <h2>Files</h2>
+          <p>Send photos, videos or any file to your Mac’s Downloads folder.</p>
+        </header>
+        <section class="flex flex-col gap-3">
+          <label class="btn" data-variant="outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+            Send files to Mac
+            <input id="fileInput" type="file" multiple class="sr-only">
+          </label>
+          <div id="uploads" class="flex flex-col gap-2"></div>
+        </section>
+      </section>
+
+      <section class="card">
+        <header>
           <h2>Latest</h2>
           <p id="latestMeta">Waiting for your Mac…</p>
         </header>
         <section>
           <pre id="latestText" class="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-sm"></pre>
           <img id="latestImg" class="max-w-full rounded-md" alt="Image from the clipboard" hidden>
+          <div id="latestFile" class="flex items-center gap-3" hidden>
+            <svg class="size-8 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+            <div class="min-w-0">
+              <p id="fileName" class="truncate font-medium"></p>
+              <p id="fileSize" class="text-sm text-muted-foreground"></p>
+            </div>
+          </div>
         </section>
         <footer>
           <button id="copyBtn" type="button" class="btn" data-variant="outline" disabled>Copy again</button>
+          <button id="downloadBtn" type="button" class="btn" hidden>Download</button>
         </footer>
       </section>
     </div>

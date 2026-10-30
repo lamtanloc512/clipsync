@@ -5,7 +5,7 @@
 Chia sẻ clipboard giữa Mac và điện thoại qua Wi‑Fi trong nhà, giống tính năng đồng bộ clipboard của KDE Connect. Điện thoại không cần cài app.
 
 - **Tự động đồng bộ hai chiều:** copy trên Mac là có ngay trong clipboard điện thoại; copy trên điện thoại là có trên Mac, khi ClipSync đang mở trên điện thoại.
-- **Gửi ảnh từ điện thoại sang Mac:** rồi dán trên Mac bằng ⌘V.
+- **Gửi file và video, dung lượng bao nhiêu cũng được:** từ điện thoại vào thẳng thư mục Downloads của Mac (và vào clipboard, sẵn sàng ⌘V). Copy một file trong Finder là điện thoại tải về được.
 - **Chạy được trên Android và iPhone** qua trình duyệt. Có thể dùng thêm iOS Shortcuts / Android HTTP Shortcuts để gửi bằng một chạm.
 - **Riêng tư:** dữ liệu chỉ đi trong mạng nội bộ. Không tài khoản, không cloud, không theo dõi.
 - **Pair an toàn:** quét mã QR, xác nhận mã trùng khớp trên Mac. Kết nối được mã hoá bằng HTTPS.
@@ -14,8 +14,8 @@ Chia sẻ clipboard giữa Mac và điện thoại qua Wi‑Fi trong nhà, giố
 
 ## Yêu cầu
 
-- Mac chạy **macOS 13 Ventura trở lên** (Apple Silicon hoặc Intel)
-- Điện thoại Android hoặc iPhone có trình duyệt đời mới
+- Mac chạy **macOS 11 Big Sur trở lên** (Apple Silicon hoặc Intel)
+- Điện thoại **Android** có Chrome 111 trở lên (Android 8+), hoặc **iPhone/iPad chạy iOS 16.4** trở lên
 - Hai thiết bị dùng **chung một mạng Wi‑Fi** (hoặc Mac kết nối vào hotspot của điện thoại)
 
 ## Tải về và cài đặt
@@ -81,7 +81,13 @@ Mở ClipSync từ màn hình chính và để nó mở. Hai công tắc trong *
 | Điện thoại → Mac | Gửi khi mở ClipSync và mỗi 2 giây khi đang mở | Bấm **Send clipboard to Mac** (iOS hỏi xác nhận Paste) |
 | Khi chạy nền | Bắt kịp ngay khi mở lại ClipSync | Như Android |
 
-Không trang web nào chạy nền được, nên điện thoại đồng bộ mỗi khi ClipSync đang mở. Mục **Latest** hiện nội dung đồng bộ gần nhất. **Settings** (⚙) có gửi thủ công (chữ hoặc ảnh), cài chứng chỉ, token cho Shortcuts và **Unpair**.
+Không trang web nào chạy nền được, nên điện thoại đồng bộ mỗi khi ClipSync đang mở.
+
+### Gửi file và video
+
+- **Điện thoại → Mac:** bấm **Send files to Mac**, chọn ảnh, video hoặc file bất kỳ; mỗi file có thanh tiến trình. File được lưu vào thư mục **Downloads** của Mac, đưa vào clipboard Mac (⌘V để dán file vào Finder, Mail, Slack…) và có thông báo — bấm vào để mở file trong Finder. File được ghi thẳng xuống đĩa nên chỉ giới hạn bởi dung lượng trống của Mac (mặc định tối đa 20 GB mỗi file).
+- **Mac → điện thoại:** copy file trong Finder (⌘C), hoặc chọn **Send File to Phones…** trên menu. Điện thoại hiện file trong mục **Latest** kèm nút **Download**.
+- Giữ ClipSync mở trên điện thoại cho đến khi gửi xong; trình duyệt tạm dừng trang khi chạy nền. Mục **Latest** hiện nội dung đồng bộ gần nhất. **Settings** (⚙) có gửi thủ công (chữ hoặc ảnh), cài chứng chỉ, token cho Shortcuts và **Unpair**.
 
 ### Trên Mac (thanh menu)
 
@@ -89,6 +95,7 @@ Không trang web nào chạy nền được, nên điện thoại đồng bộ m
 |---|---|
 | **Pair a Phone** | Hiện mã QR để pair |
 | **Send Certificate via AirDrop** | Gửi chứng chỉ sang iPhone |
+| **Send File to Phones…** | Gửi một file để điện thoại tải về (giống copy file trong Finder) |
 | **Paired Devices** | Danh sách điện thoại đã pair; chọn một máy → **Unpair** để gỡ |
 | **Recent** | 20 mục copy gần nhất; bấm vào để copy lại |
 | **Launch at Login** | Tự chạy ClipSync khi đăng nhập |
@@ -133,6 +140,7 @@ Mẹo: gán shortcut vào **Back Tap** (Cài đặt → Trợ năng → Cảm �
 - Muốn pair phải có mã QR (chỉ hiện trên màn hình Mac của bạn) và phải bấm **Accept**.
 - Mỗi điện thoại có khoá riêng, có thể thu hồi bất cứ lúc nào trong **Paired Devices**.
 - **Điện thoại đã pair đọc được mọi thứ bạn copy và có thể thay đổi clipboard của Mac.** Chỉ pair thiết bị của chính bạn, và unpair ngay nếu mất điện thoại.
+- File bạn copy trong Finder (hoặc gửi từ menu) có thể được điện thoại đã pair tải về khi nó đang nằm trong clipboard. File nhận từ điện thoại được đánh dấu là tải từ internet, nên macOS kiểm tra như mọi file tải về khác.
 - Khi bật **Send this phone's clipboard automatically**, mọi thứ bạn copy trên điện thoại lúc ClipSync đang mở (kể cả mật khẩu) sẽ được gửi sang Mac. Tắt công tắc này nếu không muốn.
 - Trong mạng, Mac xuất hiện với tên `clipsync.local`; mã QR và trình duyệt không hiện IP hay tên Mac của bạn.
 

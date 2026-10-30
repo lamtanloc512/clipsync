@@ -9,6 +9,9 @@ struct HTTPRequest {
     /// Header names are lowercased.
     let headers: [String: String]
     let body: Data
+    /// For streamed uploads (`Admission.stream`): the file holding the body. The handler owns it
+    /// and must move or delete it.
+    var bodyFile: URL? = nil
 }
 
 struct HTTPResponse {
@@ -16,6 +19,18 @@ struct HTTPResponse {
     var contentType: String
     var body: Data
     var headers: [String: String] = [:]
+    /// Streams this file from disk instead of `body` (for large downloads).
+    var file: (url: URL, length: Int)? = nil
+
+    /// A response that streams `url` from disk, or nil if it isn't a readable regular file.
+    static func file(_ url: URL, contentType: String) -> HTTPResponse? {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true, let size = values.fileSize,
+              FileManager.default.isReadableFile(atPath: url.path) else { return nil }
+        var response = HTTPResponse(status: 200, contentType: contentType, body: Data())
+        response.file = (url, size)
+        return response
+    }
 
     static func text(_ s: String, status: Int = 200) -> HTTPResponse {
         HTTPResponse(status: status, contentType: "text/plain; charset=utf-8", body: Data(s.utf8))
@@ -37,8 +52,11 @@ struct HTTPResponse {
 
 /// Result of looking at a request's headers before its body is read.
 enum Admission {
-    /// Read up to `maxBody` bytes of body, then call the handler.
+    /// Read up to `maxBody` bytes of body into memory, then call the handler.
     case accept(maxBody: Int)
+    /// Write up to `maxBody` bytes of body straight to `file` (never held in memory), then call
+    /// the handler with `bodyFile` set. Partial files are deleted if the upload breaks off.
+    case stream(maxBody: Int, to: URL)
     /// Answer immediately without reading the body.
     case reject(HTTPResponse)
 }
@@ -59,7 +77,13 @@ final class HTTPServer {
     typealias Admit = (HTTPRequestHead) -> Admission
 
     static let maxHeaderSize = 16 * 1024
+    /// Largest in-memory body (`Admission.accept`).
     static let maxBodySize = 30 * 1024 * 1024
+    /// Sanity cap on any declared Content-Length; streamed uploads are limited by their admission.
+    static let maxDeclaredLength = 64 * 1024 * 1024 * 1024
+    /// Streams (uploads and downloads) are cut off after this long without progress.
+    static let streamIdleTimeout: TimeInterval = 60
+    static let streamChunk = 512 * 1024
     static let maxConnections = 64
     /// A client must deliver its whole request within this time (slowloris protection).
     static let requestTimeout: TimeInterval = 20
@@ -81,7 +105,20 @@ final class HTTPServer {
         var bodyStart = 0
         var sentContinue = false
         var timeout: Timer?
+        // Streamed upload state.
+        var sink: FileHandle?
+        var sinkURL: URL?
+        var received = 0
+        var bodyDelivered = false
         init(_ nw: NWConnection) { self.nw = nw }
+
+        /// Deletes a partially received upload (connection broke or request was refused).
+        func discardPartialUpload() {
+            try? sink?.close()
+            sink = nil
+            if let url = sinkURL, !bodyDelivered { try? FileManager.default.removeItem(at: url) }
+            sinkURL = nil
+        }
     }
 
     init(port: UInt16, identity: SecIdentity, admit: @escaping Admit, handler: @escaping Handler) {
@@ -142,6 +179,7 @@ final class HTTPServer {
             switch state {
             case .cancelled, .failed:
                 self?.connections[id]?.timeout?.invalidate()
+                self?.connections[id]?.discardPartialUpload()
                 self?.connections[id] = nil
             default: break
             }
@@ -152,9 +190,15 @@ final class HTTPServer {
     }
 
     private func receive(_ connection: Connection) {
-        connection.nw.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] data, _, isComplete, error in
+        connection.nw.receive(minimumIncompleteLength: 1, maximumLength: 1024 * 1024) { [weak self] data, _, isComplete, error in
             guard let self else { connection.nw.cancel(); return }
-            if let data { connection.buffer.append(data) }
+            if let data, !data.isEmpty {
+                if connection.sink != nil {
+                    guard self.write(data, to: connection) else { return }
+                } else {
+                    connection.buffer.append(data)
+                }
+            }
 
             if connection.head == nil {
                 switch Self.parseHead(connection.buffer) {
@@ -164,7 +208,7 @@ final class HTTPServer {
                     self.finish(connection, .text("Bad request", status: status))
                     return
                 case .head(let head, let bodyStart):
-                    // Decide on auth/limits from the headers alone, before buffering any body.
+                    // Decide on auth/limits from the headers alone, before reading any body.
                     switch self.admit(head) {
                     case .reject(let response):
                         self.finish(connection, response)
@@ -174,25 +218,51 @@ final class HTTPServer {
                             self.finish(connection, .text("Payload too large", status: 413))
                             return
                         }
+                        connection.head = head
+                        connection.bodyStart = bodyStart
+                    case .stream(let maxBody, let file):
+                        guard head.contentLength <= maxBody else {
+                            self.finish(connection, .text("Payload too large", status: 413))
+                            return
+                        }
+                        guard FileManager.default.createFile(atPath: file.path, contents: nil,
+                                                             attributes: [.posixPermissions: 0o600]),
+                              let sink = try? FileHandle(forWritingTo: file) else {
+                            self.finish(connection, .text("Cannot store the upload", status: 500))
+                            return
+                        }
+                        connection.head = head
+                        connection.sink = sink
+                        connection.sinkURL = file
+                        // Body bytes that arrived together with the headers.
+                        let early = connection.buffer.dropFirst(bodyStart)
+                        connection.buffer = Data()
+                        if !early.isEmpty { guard self.write(Data(early), to: connection) else { return } }
                     }
-                    connection.head = head
-                    connection.bodyStart = bodyStart
                 }
             }
 
             if let head = connection.head {
-                let available = connection.buffer.count - connection.bodyStart
-                if available >= head.contentLength {
-                    connection.timeout?.invalidate()
-                    let start = connection.bodyStart
-                    let body = Data(connection.buffer[start..<(start + head.contentLength)])
-                    connection.buffer = Data()
-                    let request = HTTPRequest(method: head.method, path: head.path, query: head.query,
-                                              headers: head.headers, body: body)
-                    self.handler(request) { response in
-                        self.finish(connection, response)
+                if connection.sink != nil {
+                    if connection.received >= head.contentLength {
+                        self.deliverStreamedBody(connection, head: head)
+                        return
                     }
-                    return
+                    self.resetIdleTimer(connection)
+                } else {
+                    let available = connection.buffer.count - connection.bodyStart
+                    if available >= head.contentLength {
+                        connection.timeout?.invalidate()
+                        let start = connection.bodyStart
+                        let body = Data(connection.buffer[start..<(start + head.contentLength)])
+                        connection.buffer = Data()
+                        let request = HTTPRequest(method: head.method, path: head.path, query: head.query,
+                                                  headers: head.headers, body: body)
+                        self.handler(request) { response in
+                            self.finish(connection, response)
+                        }
+                        return
+                    }
                 }
                 if !connection.sentContinue, head.headers["expect"]?.lowercased() == "100-continue" {
                     // curl and some clients wait for this before sending large bodies.
@@ -209,12 +279,58 @@ final class HTTPServer {
         }
     }
 
+    /// Appends upload bytes to the sink (never past Content-Length). Returns false after a failure.
+    private func write(_ data: Data, to connection: Connection) -> Bool {
+        guard let sink = connection.sink else { return false }
+        let limit = (connection.head?.contentLength ?? 0) - connection.received
+        let chunk = data.count > limit ? data.prefix(max(limit, 0)) : data
+        do {
+            try sink.write(contentsOf: chunk)
+            connection.received += chunk.count
+            return true
+        } catch {
+            NSLog("ClipSync: writing upload failed: %@", String(describing: error))
+            connection.discardPartialUpload()
+            finish(connection, .text("Cannot store the upload", status: 507))
+            return false
+        }
+    }
+
+    private func deliverStreamedBody(_ connection: Connection, head: HTTPRequestHead) {
+        connection.timeout?.invalidate()
+        try? connection.sink?.close()
+        connection.sink = nil
+        connection.bodyDelivered = true   // the handler owns the file from here on
+        var request = HTTPRequest(method: head.method, path: head.path, query: head.query,
+                                  headers: head.headers, body: Data())
+        request.bodyFile = connection.sinkURL
+        handler(request) { [weak self] response in
+            self?.finish(connection, response)
+        }
+    }
+
+    private func resetIdleTimer(_ connection: Connection) {
+        connection.timeout?.invalidate()
+        connection.timeout = scheduleTimer(after: Self.streamIdleTimeout) { _ in connection.nw.cancel() }
+    }
+
     private func finish(_ connection: Connection, _ response: HTTPResponse) {
         connection.timeout?.invalidate()
+        if !connection.bodyDelivered { connection.discardPartialUpload() }
+
+        var fileHandle: FileHandle?
+        if let file = response.file {
+            guard let handle = try? FileHandle(forReadingFrom: file.url) else {
+                finish(connection, .text("Not found", status: 404))
+                return
+            }
+            fileHandle = handle
+        }
+
         var head = "HTTP/1.1 \(response.status) \(Self.reason(response.status))\r\n"
         var headers = response.headers
         headers["Content-Type"] = response.contentType
-        headers["Content-Length"] = String(response.body.count)
+        headers["Content-Length"] = String(response.file?.length ?? response.body.count)
         headers["Connection"] = "close"
         if headers["Cache-Control"] == nil { headers["Cache-Control"] = "no-store" }
         headers["X-Content-Type-Options"] = "nosniff"
@@ -223,14 +339,44 @@ final class HTTPServer {
         // Deliberately no CORS headers: only the same-origin web client may read responses.
         for (k, v) in headers { head += "\(k): \(v)\r\n" }
         head += "\r\n"
-        var out = Data(head.utf8)
-        out.append(response.body)
-        // Send as the final message (TLS close_notify + FIN after the data), then let the client
-        // finish reading and close first. Cancelling as soon as the data is handed to the stack
-        // can cut off large responses still in flight — phones then got a truncated stylesheet.
-        connection.nw.send(content: out, contentContext: .finalMessage, isComplete: true,
+
+        guard let fileHandle else {
+            var out = Data(head.utf8)
+            out.append(response.body)
+            sendFinal(out, on: connection)
+            return
+        }
+        connection.nw.send(content: Data(head.utf8), completion: .contentProcessed { [weak self] error in
+            guard error == nil else { try? fileHandle.close(); connection.nw.cancel(); return }
+            self?.pump(fileHandle, to: connection)
+        })
+    }
+
+    /// Streams a file in chunks; the next chunk is read only once the previous one was taken
+    /// by the network stack, so memory use stays flat whatever the file size.
+    private func pump(_ handle: FileHandle, to connection: Connection) {
+        let chunk: Data?
+        do { chunk = try handle.read(upToCount: Self.streamChunk) } catch { chunk = nil }
+        guard let chunk, !chunk.isEmpty else {
+            try? handle.close()
+            sendFinal(nil, on: connection)
+            return
+        }
+        resetIdleTimer(connection)
+        connection.nw.send(content: chunk, completion: .contentProcessed { [weak self] error in
+            guard error == nil, let self else { try? handle.close(); connection.nw.cancel(); return }
+            self.pump(handle, to: connection)
+        })
+    }
+
+    /// Sends the last bytes as the final message (TLS close_notify + FIN after the data), then lets
+    /// the client finish reading and close first. Cancelling as soon as the data is handed to the
+    /// stack can cut off large responses still in flight — phones then got a truncated stylesheet.
+    private func sendFinal(_ data: Data?, on connection: Connection) {
+        connection.nw.send(content: data, contentContext: .finalMessage, isComplete: true,
                            completion: .contentProcessed { [weak self] error in
             guard error == nil else { connection.nw.cancel(); return }
+            connection.timeout?.invalidate()
             connection.timeout = scheduleTimer(after: Self.lingerTimeout) { _ in connection.nw.cancel() }
             self?.drainUntilClosed(connection)
         })
@@ -315,7 +461,7 @@ final class HTTPServer {
         }
         let length = Int(headers["content-length"] ?? "0") ?? -1
         guard length >= 0 else { return .invalid(status: 400) }
-        guard length <= maxBodySize else { return .invalid(status: 413) }
+        guard length <= maxDeclaredLength else { return .invalid(status: 413) }
 
         let target = String(requestLine[1])
         let components = URLComponents(string: "http://localhost" + target)
@@ -349,6 +495,8 @@ final class HTTPServer {
         case 415: return "Unsupported Media Type"
         case 429: return "Too Many Requests"
         case 431: return "Request Header Fields Too Large"
+        case 500: return "Internal Server Error"
+        case 507: return "Insufficient Storage"
         default: return "Status"
         }
     }

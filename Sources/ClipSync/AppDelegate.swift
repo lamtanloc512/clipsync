@@ -1,7 +1,7 @@
 import AppKit
-import ServiceManagement
+import UserNotifications
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private let service = SyncService()
     private var statusItem: NSStatusItem!
     private var pairingWindow: PairingWindowController?
@@ -24,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSLog("ClipSync server: %@", state)
             self?.serverState = state
         }
+        service.onFileReceived = { [weak self] url, device in
+            self?.notifyFileReceived(url, from: device)
+        }
+        if Self.canNotify { UNUserNotificationCenter.current().delegate = self }
         service.onReceive = { [weak self] _ in
             self?.flashReceived()
         }
@@ -81,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(item("Pair a Phone (QR code)…", #selector(showPairing), key: "p"))
+        menu.addItem(item("Send File to Phones…", #selector(sendFileToPhones), key: "o"))
         menu.addItem(item("Send Certificate via AirDrop…", #selector(airDropCertificate)))
 
         let devicesItem = NSMenuItem(title: "Paired Devices", action: nil, keyEquivalent: "")
@@ -126,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         let login = item("Launch at Login", #selector(toggleLaunchAtLogin))
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        login.state = LoginItem.isEnabled ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
         menu.addItem(item("Quit ClipSync", #selector(quit), key: "q"))
@@ -153,6 +158,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// AirDrop is an out-of-band channel: unlike downloading over Wi‑Fi, an attacker on the
     /// network cannot swap in their own certificate on the way to the phone.
+    /// Puts the chosen file on the clipboard; phones show it with a Download button.
+    /// (Copying a file in Finder with ⌘C does the same.)
+    @objc private func sendFileToPhones() {
+        let panel = NSOpenPanel()
+        panel.title = "Send a File to Your Phones"
+        panel.prompt = "Send"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if !service.store.setFile(url, source: "Mac") {
+            let alert = NSAlert()
+            alert.messageText = "Could not send “\(url.lastPathComponent)”"
+            alert.informativeText = "Only regular files can be sent."
+            alert.runModal()
+        }
+    }
+
+    // MARK: - Notifications
+
+    /// UNUserNotificationCenter needs a real app bundle (it crashes under `swift run`).
+    private static var canNotify: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+
+    private func notifyFileReceived(_ url: URL, from device: String) {
+        flashReceived()
+        guard Self.canNotify else { return }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "File from \(device)"
+            content.body = "\(url.lastPathComponent) is in Downloads and on the clipboard."
+            content.userInfo = ["path": url.path]
+            content.sound = .default
+            center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        }
+    }
+
+    /// Clicking the notification shows the file in Finder.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        if let path = response.notification.request.content.userInfo["path"] as? String {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        }
+        completionHandler()
+    }
+
+    /// Show notifications even while ClipSync is the active app.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
+    }
+
     @objc private func airDropCertificate() {
         guard let profile = service.certificates.mobileConfig(name: service.hostname) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("ClipSync.mobileconfig")
@@ -183,11 +242,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleLaunchAtLogin() {
         do {
-            if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
-            } else {
-                try SMAppService.mainApp.register()
-            }
+            try LoginItem.setEnabled(!LoginItem.isEnabled)
         } catch {
             let alert = NSAlert()
             alert.messageText = "Could not change Launch at Login"

@@ -13,7 +13,7 @@ By taking part in this project you agree to follow the [Code of Conduct](CODE_OF
 
 ## Development setup
 
-Requirements: macOS 13+, Xcode 15+ or the Command Line Tools.
+Requirements: macOS 11+ to run, a recent Xcode (or the Command Line Tools) to build. The deployment target is macOS 11, so the compiler rejects any newer API that isn't guarded by `#available`.
 
 ```bash
 swift build                  # debug build
@@ -84,6 +84,7 @@ ClipSync is a single macOS menu-bar app. Phones are plain HTTPS clients: a web p
 | `DeviceStore.swift` | Paired devices (persisted), pairing requests, one-time QR secret |
 | `PairingWindow.swift` | QR code window (`.local` URL with IP fallback, CA fingerprint) |
 | `PairRequestWindow.swift` | Non-modal Accept/Reject panel |
+| `LoginItem.swift` | Launch at Login: `SMAppService` on macOS 13+, a LaunchAgent on 11–12 |
 | `HostnamePublisher.swift` | Publishes `clipsync.local` (mDNS A records via `dns_sd`), picks `clipsync-xxxx.local` on conflict |
 | `WebAssets.generated.swift` | The phone web client, generated from `web/` (do not edit) |
 | `Util.swift` | Common-mode timers, secure random strings, constant-time comparison |
@@ -119,9 +120,12 @@ All endpoints are HTTPS on port 8765. Authenticated endpoints need `X-Token: <to
 | GET | `/api/clipboard/image` | ✓ | Current image as PNG |
 | POST | `/api/clipboard` | ✓ | Body: text, `{"text": "..."}`, or an image (PNG/JPEG/HEIC) |
 | POST | `/api/unpair` | ✓ | Unpairs the calling device |
+| POST | `/api/files` | ✓ | Upload a file: raw body, `X-Filename` (percent-encoded), `Content-Length` required. Streamed to `~/Downloads` (20 GB default cap, `maxUploadGB`), quarantined, put on the clipboard |
+| POST | `/api/files/ticket?id=<item id>` | ✓ | `{url}`: a `/dl/<ticket>/<name>` link valid for 10 minutes, so the browser's download manager can fetch the file without the token |
+| GET | `/dl/<ticket>/<name>` | ticket | Streams the file item as an attachment |
 | GET | `/api/ping` | ✓ | Connectivity check |
 
-Limits: text up to 2 MB, images up to 30 MB and 50 megapixels. Unauthenticated requests may send at most 4 KB of body.
+Limits: text up to 2 MB, clipboard images up to 30 MB and 50 megapixels, files up to `maxUploadGB` (streamed, never held in memory). Unauthenticated requests may send at most 4 KB of body.
 
 ## Testing
 

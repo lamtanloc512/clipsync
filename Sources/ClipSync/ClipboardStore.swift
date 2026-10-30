@@ -3,8 +3,10 @@ import ImageIO
 import UniformTypeIdentifiers
 
 struct ClipItem {
-    enum Kind: String { case text, image }
+    enum Kind: String { case text, image, file }
 
+    /// Identifies the item for downloads (`/api/files/ticket?id=`).
+    let id = UUID().uuidString
     let kind: Kind
     let text: String?
     /// PNG data for image items.
@@ -14,9 +16,17 @@ struct ClipItem {
     /// Paired-device id of the phone that sent it; nil for copies made on the Mac.
     var sourceID: String? = nil
     let date: Date
+    /// For file items: the file on this Mac (copied in Finder, received from a phone, or sent via
+    /// the menu). `text` holds its name.
+    var fileURL: URL? = nil
+    var fileSize: Int? = nil
 
     var preview: String {
         switch kind {
+        case .file:
+            let size = ByteCountFormatter.string(fromByteCount: Int64(fileSize ?? 0), countStyle: .file)
+            let name = text ?? "File"
+            return "📎 \(name.count > 40 ? String(name.prefix(40)) + "…" : name) (\(size))"
         case .image:
             return "🖼 Image (\(ByteCountFormatter.string(fromByteCount: Int64(image?.count ?? 0), countStyle: .file)))"
         case .text:
@@ -91,6 +101,11 @@ final class ClipboardStore {
         // Respect password managers that mark their copies as concealed/transient.
         if types.contains(where: Self.privateTypes.contains) { return nil }
 
+        // A file copied in Finder (⌘C). Checked before text: Finder also puts the file name there.
+        if let url = Self.singleFile(on: pasteboard) {
+            return Self.fileItem(url, source: "Mac", sourceID: nil)
+        }
+
         if let text = pasteboard.string(forType: .string), !text.isEmpty {
             return ClipItem(kind: .text, text: text, image: nil, source: "Mac", date: Date())
         }
@@ -136,19 +151,59 @@ final class ClipboardStore {
         return .ok
     }
 
+    /// Puts a file on the clipboard (⌘V pastes it in Finder, Mail, Slack…) and offers it to phones.
+    @discardableResult
+    func setFile(_ url: URL, source: String, sourceID: String? = nil) -> Bool {
+        guard let item = Self.fileItem(url, source: source, sourceID: sourceID) else { return false }
+        pasteboard.clearContents()
+        pasteboard.writeObjects([url as NSURL])
+        lastChangeCount = pasteboard.changeCount
+        commit(item)
+        return true
+    }
+
     /// Re-copies an item from history (from the menu).
     func restore(_ item: ClipItem) {
         switch item.kind {
         case .text: setText(item.text ?? "", source: item.source)
         case .image: if let data = item.image { setImage(data, source: item.source) }
+        case .file: if let url = item.fileURL { setFile(url, source: item.source) }
         }
+    }
+
+    /// A file item from this Mac that phones may download, looked up by item id.
+    func file(withID id: String) -> ClipItem? {
+        history.first { $0.id == id && $0.kind == .file }
+    }
+
+    // MARK: - Files
+
+    /// The single regular file on the pasteboard, if any (folders and multi-file copies are ignored:
+    /// a phone can only take one download at a time).
+    private static func singleFile(on pasteboard: NSPasteboard) -> URL? {
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self],
+                                          options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        guard urls.count == 1, let url = urls.first,
+              (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
+        return url
+    }
+
+    private static func fileItem(_ url: URL, source: String, sourceID: String?) -> ClipItem? {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true else { return nil }
+        var item = ClipItem(kind: .file, text: url.lastPathComponent, image: nil, source: source,
+                            sourceID: sourceID, date: Date())
+        item.fileURL = url
+        item.fileSize = values.fileSize
+        return item
     }
 
     private func commit(_ item: ClipItem) {
         version += 1
         current = item
         history.removeAll { old in
-            old.kind == .text && item.kind == .text && old.text == item.text
+            (old.kind == .text && item.kind == .text && old.text == item.text) ||
+            (old.kind == .file && item.kind == .file && old.fileURL == item.fileURL)
         }
         history.insert(item, at: 0)
         if history.count > maxHistory { history.removeLast(history.count - maxHistory) }

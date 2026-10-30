@@ -35,6 +35,8 @@ ClipSync runs an HTTPS server on your Mac that phones on the same local network 
 | Leaked CA key | The CA has name constraints (private IPs, `*.local`, `localhost` only), an EKU limited to `serverAuth`, and no email/URI names. It cannot impersonate public websites |
 | Leaked token | Each device has its own 32-character token. Only its SHA-256 is stored, tokens are accepted in headers only (not URLs), and devices can be unpaired individually |
 | Denial of service | At most 64 connections, a 20 s request deadline, and no request body before authentication (4 KB limit) |
+| Files sent by a paired device | Streamed to disk (never into memory) up to a size cap and only with enough free space; names are stripped of paths, control characters and leading dots and never overwrite existing files; files get the `com.apple.quarantine` attribute so Gatekeeper treats them as downloads |
+| File downloads | Only files that are currently on the clipboard/history can be downloaded, by item id; download links carry a random, 10-minute ticket instead of the device token |
 | Malicious images from a paired device | Only PNG/JPEG/HEIC are accepted. The pixel count (≤ 50 MP) is checked before decoding. Text is limited to 2 MB |
 | Passwords leaking to the phone | Pasteboard items marked as concealed or transient (nspasteboard.org markers, 1Password, …) are never shared |
 | Tampered builds | CI is read-only except the tag-triggered release job. Releases include `SHA256SUMS.txt` |
@@ -49,7 +51,8 @@ These are inherent to the current design. Please keep them in mind:
   - Compare the certificate fingerprint on the phone with the one shown in the Mac's QR window. Checking the first and last 8 hex digits (64 bits) is enough.
 - **Automatic sending from the phone.** With auto-send on, whatever is copied on the phone while ClipSync is open — including passwords from a password manager — is sent to the Mac. Browsers don't expose "sensitive" clipboard flags, so ClipSync can't filter these on the phone side.
 - **mDNS name.** Anyone on the network can also announce `clipsync.local`. If another device takes the name first, ClipSync switches to `clipsync-xxxx.local`. A device that answers for the name can't impersonate the Mac, because it has no certificate signed by your Mac's CA — but on a first connection without the CA installed (see above) the phone can't tell the difference.
+- **Files on the clipboard are shared.** A file you copy in Finder can be downloaded by any paired phone while it is in ClipSync's clipboard history (last 20 items). Download links work for 10 minutes for anyone who has the link.
 - **Paired devices are fully trusted.** A paired device can read everything you copy and can overwrite the Mac's clipboard. Only pair your own devices and unpair lost ones.
 - **Key material on disk.** The CA key and TLS identity are stored in `~/Library/Application Support/ClipSync/certs` with mode `0600`. Malware running as your user could read them, but the name constraints limit their use to local-network names.
-- **macOS 13–14.** The TLS identity has to go through the login keychain, so a new server key is created at every launch and older entries stay in the keychain. On macOS 15+ the identity stays in memory only.
+- **macOS 11–14.** The TLS identity has to go through the login keychain, so a new server key is created at every launch and older entries stay in the keychain. On macOS 15+ the identity stays in memory only.
 - **Distribution.** Releases are ad-hoc signed and not notarized by Apple. Verify `SHA256SUMS.txt` or build from source.

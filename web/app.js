@@ -201,9 +201,25 @@
     });
   }
 
+  function formatSize(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let n = bytes, i = 0;
+    while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+    return `${n >= 100 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+  }
+
   function render(j) {
     $('latestMeta').textContent = describe(j);
-    if (j.kind === 'image') {
+    const isFile = j.kind === 'file';
+    $('latestFile').hidden = !isFile;
+    $('downloadBtn').hidden = !isFile;
+    $('copyBtn').hidden = isFile;
+    if (isFile) {
+      $('latestText').textContent = '';
+      $('latestImg').hidden = true;
+      $('fileName').textContent = j.text || 'File';
+      $('fileSize').textContent = formatSize(j.size || 0);
+    } else if (j.kind === 'image') {
       $('latestText').textContent = '';
       fetchImage().then((blob) => {
         if (current !== j) return;
@@ -224,6 +240,13 @@
     current = j;
     render(j);
     if (!j.kind) return;
+    if (j.kind === 'file') {
+      // Files can't go on a phone clipboard from a web page; offer the download instead.
+      const stamp = `${j.epoch}:${j.version}`;
+      if (!j.mine && store.get('clipsync.lastStamp') !== stamp) toast('File from your Mac — tap Download', 'info');
+      store.set('clipsync.lastStamp', stamp);
+      return;
+    }
     const hash = j.kind === 'text' ? await hashText(j.text || '') : `image:${j.epoch}:${j.version}`;
     if (j.mine || hash === lastSyncedHash) {
       markSynced(hash);
@@ -413,6 +436,112 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resume(); });
   window.addEventListener('focus', resume);
   window.addEventListener('pageshow', (e) => { if (e.persisted) resume(); });
+
+  // ---------- Files ----------
+  // Uploads go one at a time with XMLHttpRequest (fetch can't report upload progress). The Mac
+  // writes them straight to disk, so size is limited by the Mac's free space, not its memory.
+  const uploadQueue = [];
+  let uploading = false;
+
+  $('fileInput').addEventListener('change', (e) => {
+    for (const file of e.target.files) uploadQueue.push({ file, row: addUploadRow(file) });
+    e.target.value = '';
+    nextUpload();
+  });
+
+  function addUploadRow(file) {
+    const row = document.createElement('article');
+    row.className = 'item';
+    row.dataset.variant = 'outline';
+    row.dataset.size = 'sm';
+    const section = document.createElement('section');
+    section.className = 'min-w-0 flex-1';
+    const name = document.createElement('h3');
+    name.className = 'truncate';
+    name.textContent = file.name;
+    const status = document.createElement('p');
+    status.textContent = `${formatSize(file.size)} · waiting`;
+    const bar = document.createElement('div');
+    bar.className = 'progress mt-2';
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-label', `Uploading ${file.name}`);
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    const fill = document.createElement('span');
+    fill.style.width = '0%';
+    bar.append(fill);
+    section.append(name, status, bar);
+    row.append(section);
+    $('uploads').prepend(row);
+    return {
+      progress(pct) {
+        fill.style.width = `${pct}%`;
+        bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+        status.textContent = `${formatSize(file.size)} · ${Math.round(pct)}%`;
+      },
+      finish(text, ok) {
+        bar.remove();
+        status.textContent = text;
+        if (!ok) status.className = 'text-destructive';
+      },
+    };
+  }
+
+  function nextUpload() {
+    if (uploading || uploadQueue.length === 0) return;
+    uploading = true;
+    const { file, row } = uploadQueue.shift();
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/files');
+    xhr.setRequestHeader('X-Token', token);
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) row.progress((e.loaded / e.total) * 100); };
+    xhr.onload = () => {
+      let reply = {};
+      try { reply = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+      if (xhr.status === 200) {
+        row.finish(`${formatSize(file.size)} · saved to Downloads as “${reply.name || file.name}”`, true);
+        toast('Sent to your Mac');
+      } else if (xhr.status === 401) {
+        row.finish('Not paired any more', false);
+        unpaired('This phone is no longer paired. Pair it again.');
+      } else if (xhr.status === 413) {
+        row.finish(`Too large (max ${formatSize(reply.max || 0)})`, false);
+      } else if (xhr.status === 507) {
+        row.finish('Not enough space on your Mac', false);
+      } else {
+        row.finish(`Failed (${xhr.status})`, false);
+      }
+      done();
+    };
+    xhr.onerror = () => { row.finish('Could not reach your Mac', false); done(); };
+    xhr.onabort = () => { row.finish('Cancelled', false); done(); };
+    function done() { uploading = false; nextUpload(); }
+    xhr.send(file);
+  }
+
+  // Downloads use a short-lived link from the Mac, so the browser's own download manager can
+  // stream large files to disk (a fetch() would hold the whole file in memory).
+  $('downloadBtn').addEventListener('click', async () => {
+    if (!current || current.kind !== 'file') return;
+    try {
+      const r = await fetch(`/api/files/ticket?id=${encodeURIComponent(current.id)}`, {
+        method: 'POST', headers: authHeaders(),
+      });
+      if (r.status === 401) { unpaired('This phone is no longer paired. Pair it again.'); return; }
+      if (!r.ok) { toast('This file is no longer available', 'error'); return; }
+      const { url } = await r.json();
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = current.text || '';
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } catch {
+      toast('Could not reach your Mac', 'error');
+    }
+  });
 
   // ---------- Settings ----------
   const settings = $('settings');

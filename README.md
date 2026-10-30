@@ -5,7 +5,7 @@
 Share your clipboard between your Mac and your phone over your local Wi‑Fi, like KDE Connect's clipboard sync, with no app to install on the phone.
 
 - **Automatic sync both ways:** copy on your Mac and it's on your phone's clipboard; copy on your phone and it's on your Mac — while ClipSync is open on the phone.
-- **Phone → Mac photos:** send pictures from your phone and paste them on your Mac with ⌘V.
+- **Send files and videos, any size:** from the phone straight into your Mac's Downloads folder (and its clipboard, ready for ⌘V). Copy a file in Finder and your phone can download it.
 - **Works with Android and iPhone** in the browser, plus optional one-tap iOS Shortcuts / Android HTTP Shortcuts.
 - **Private by design:** everything stays on your local network. No account, no cloud, no tracking.
 - **Secure pairing:** scan a QR code, confirm a matching code on the Mac, and the connection is encrypted with HTTPS.
@@ -14,8 +14,8 @@ Share your clipboard between your Mac and your phone over your local Wi‑Fi, li
 
 ## Requirements
 
-- A Mac running **macOS 13 Ventura or later** (Apple Silicon or Intel)
-- An Android phone or iPhone with a modern browser
+- A Mac running **macOS 11 Big Sur or later** (Apple Silicon or Intel)
+- An **Android** phone with Chrome 111 or later (Android 8+), or an **iPhone/iPad on iOS 16.4** or later
 - Both devices on the **same Wi‑Fi network** (or the Mac connected to the phone's hotspot)
 
 ## Download and install
@@ -81,7 +81,13 @@ What "automatic" means depends on the phone, because browsers protect the clipbo
 | Phone → Mac | Sent when you open ClipSync and every 2 s while it's on screen | Tap **Send clipboard to Mac** (iOS asks you to confirm Paste) |
 | In the background | Catches up as soon as you open ClipSync again | Same |
 
-No web page can run in the background, so the phone syncs whenever ClipSync is open. **Latest** shows the last synced item, and **Settings** (⚙) has manual sending (text or a photo), certificate setup, the Shortcuts token and **Unpair**.
+No web page can run in the background, so the phone syncs whenever ClipSync is open.
+
+### Sending files and videos
+
+- **Phone → Mac:** tap **Send files to Mac** and pick photos, videos or any files. Each shows its progress. Files land in your Mac's **Downloads** folder, are put on the Mac clipboard (⌘V pastes the file in Finder, Mail, Slack…), and a notification appears — click it to show the file in Finder. Files go straight to disk, so their size is limited only by the Mac's free space (20 GB per file by default).
+- **Mac → phone:** copy a file in Finder (⌘C), or choose **Send File to Phones…** in the menu. Your phone shows it under **Latest** with a **Download** button.
+- Keep ClipSync open on the phone until an upload finishes; browsers pause pages in the background. **Latest** shows the last synced item, and **Settings** (⚙) has manual sending (text or a photo), certificate setup, the Shortcuts token and **Unpair**.
 
 ### On the Mac (menu bar)
 
@@ -89,6 +95,7 @@ No web page can run in the background, so the phone syncs whenever ClipSync is o
 |---|---|
 | **Pair a Phone** | Shows the QR code for pairing |
 | **Send Certificate via AirDrop** | Sends the certificate to an iPhone |
+| **Send File to Phones…** | Offers a file to your phones for download (same as copying it in Finder) |
 | **Paired Devices** | Lists paired phones; choose one → **Unpair** to remove it |
 | **Recent** | The last 20 clipboard items; click one to copy it again |
 | **Launch at Login** | Starts ClipSync automatically |
@@ -133,6 +140,7 @@ Tip: assign a shortcut to **Back Tap** (Settings → Accessibility → Touch →
 - Pairing requires both the QR code (only visible on your Mac's screen) and a click on **Accept**.
 - Each phone gets its own key, which you can revoke at any time from **Paired Devices**.
 - **A paired phone can read everything you copy and change your Mac's clipboard.** Only pair your own devices, and unpair a phone if you lose it.
+- Files you copy in Finder (or send from the menu) can be downloaded by your paired phones while they're on the clipboard. Files received from phones are marked as downloaded from the internet, so macOS checks them like any download.
 - With **Send this phone's clipboard automatically** on, anything you copy on the phone while ClipSync is open — including passwords — goes to your Mac. Turn it off if you don't want that.
 - Your Mac appears on the network as `clipsync.local`; neither its IP address nor its name is shown in the QR code or the browser.
 

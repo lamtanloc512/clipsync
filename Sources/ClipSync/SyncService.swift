@@ -1,4 +1,6 @@
 import Foundation
+import CoreServices
+import UniformTypeIdentifiers
 
 /// Glues the HTTPS server to the clipboard store, handles pairing and per-device auth.
 final class SyncService {
@@ -20,6 +22,18 @@ final class SyncService {
 
     /// Called when a phone pushes something to the Mac.
     var onReceive: ((ClipItem) -> Void)?
+    /// Called when a phone sent a file (already saved in Downloads): (file, device name).
+    var onFileReceived: ((URL, String) -> Void)?
+
+    /// Largest file a phone may send (default 20 GB; `defaults write com.lamtanloc.clipsync maxUploadGB -int N`).
+    var maxUploadBytes: Int {
+        let gb = UserDefaults.standard.integer(forKey: "maxUploadGB")
+        return (gb > 0 ? gb : 20) * 1024 * 1024 * 1024
+    }
+
+    /// Short-lived download links for file items: ticket → (item id, expiry).
+    private var downloadTickets: [String: (itemID: String, expires: Date)] = [:]
+    static let ticketLifetime: TimeInterval = 600
     var onServerState: ((String) -> Void)?
 
     func start() throws {
@@ -99,6 +113,11 @@ final class SyncService {
         if Self.publicRoutes.contains("\(head.method) \(head.path)") {
             return .accept(maxBody: 4096)
         }
+        // Download links carry their own short-lived ticket instead of the device token (browsers
+        // can't add headers to a download).
+        if head.method == "GET", head.path.hasPrefix("/dl/") {
+            return .accept(maxBody: 0)
+        }
         guard head.path.hasPrefix("/api/") else {
             return .reject(.text("Not found", status: 404))
         }
@@ -106,7 +125,27 @@ final class SyncService {
         guard Self.authorizedDevice(headers: head.headers, devices: devices) != nil else {
             return .reject(.json(["error": "unauthorized"], status: 401))
         }
+        if head.method == "POST", head.path == "/api/files" {
+            return admitUpload(head)
+        }
         return .accept(maxBody: HTTPServer.maxBodySize)
+    }
+
+    /// File uploads are written straight to disk next to their destination (same volume, so the
+    /// final move is atomic) — never held in memory.
+    private func admitUpload(_ head: HTTPRequestHead) -> Admission {
+        guard head.contentLength > 0 else { return .reject(.json(["error": "empty file"], status: 400)) }
+        guard head.contentLength <= maxUploadBytes else {
+            return .reject(.json(["error": "file too large", "max": maxUploadBytes], status: 413))
+        }
+        let downloads = Self.downloadsFolder
+        let free = (try? downloads.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? 0
+        guard Int64(head.contentLength) + 256 * 1024 * 1024 < free else {
+            return .reject(.json(["error": "not enough space on the Mac"], status: 507))
+        }
+        return .stream(maxBody: head.contentLength,
+                       to: downloads.appendingPathComponent(".clipsync-\(UUID().uuidString).part"))
     }
 
     static func hostName(fromHostHeader header: String?) -> String? {
@@ -174,6 +213,10 @@ final class SyncService {
             break
         }
 
+        if req.method == "GET", req.path.hasPrefix("/dl/") {
+            respond(ticketDownload(req.path))
+            return
+        }
         guard req.path.hasPrefix("/api/") else {
             respond(.text("Not found", status: 404))
             return
@@ -206,12 +249,30 @@ final class SyncService {
             }
 
         case ("GET", "/api/clipboard/raw"):
-            // Text as text/plain, image as image/png — handy for iOS Shortcuts.
+            // Text as text/plain, image as image/png, a file as itself — handy for iOS Shortcuts.
             guard let item = store.current else { respond(.text("")); return }
             switch item.kind {
             case .text: respond(.text(item.text ?? ""))
             case .image: respond(.data(item.image ?? Data(), contentType: "image/png"))
+            case .file: respond(Self.download(item) ?? .text("File no longer available", status: 410))
             }
+
+        case ("POST", "/api/files"):
+            respond(finishUpload(req, device: device))
+
+        case ("POST", "/api/files/ticket"):
+            guard let id = req.query["id"], let item = store.file(withID: id),
+                  let url = item.fileURL, FileManager.default.fileExists(atPath: url.path) else {
+                respond(.json(["error": "file no longer available"], status: 410))
+                return
+            }
+            let now = Date()
+            downloadTickets = downloadTickets.filter { $0.value.expires > now }
+            let ticket = randomString(length: 32)
+            downloadTickets[ticket] = (item.id, now.addingTimeInterval(Self.ticketLifetime))
+            let name = item.text ?? "file"
+            let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? "file"
+            respond(.json(["url": "/dl/\(ticket)/\(encoded)"]))
 
         case ("GET", "/api/clipboard/image"):
             guard let item = store.current, item.kind == .image, let png = item.image else {
@@ -300,7 +361,9 @@ final class SyncService {
     private func currentJSON(for device: PairedDevice) -> [String: Any] {
         var obj: [String: Any] = ["version": store.version, "epoch": epoch]
         if let item = store.current {
+            obj["id"] = item.id
             obj["kind"] = item.kind.rawValue
+            if item.kind == .file { obj["size"] = item.fileSize ?? 0 }
             obj["source"] = item.source
             // Lets the phone skip echoing back what it just sent.
             obj["mine"] = item.sourceID == device.id
@@ -327,6 +390,89 @@ final class SyncService {
         if gzipped != nil { response.headers["Vary"] = "Accept-Encoding" }
         response.headers["Cache-Control"] = "no-cache"
         return response
+    }
+
+    // MARK: - Files
+
+    static var downloadsFolder: URL {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")
+    }
+
+    /// Moves a finished upload into Downloads under a safe, unique name, marks it as downloaded
+    /// from the network (Gatekeeper checks it like any download) and puts it on the clipboard.
+    private func finishUpload(_ req: HTTPRequest, device: PairedDevice) -> HTTPResponse {
+        guard let temp = req.bodyFile else { return .json(["error": "no file"], status: 400) }
+        let name = Self.safeFileName(req.headers["x-filename"].flatMap { $0.removingPercentEncoding } ?? "")
+        let destination = Self.uniqueURL(for: name, in: Self.downloadsFolder)
+        do {
+            try FileManager.default.moveItem(at: temp, to: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            return .json(["error": "could not save the file"], status: 500)
+        }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: destination.path)
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineAgentNameKey as String: "ClipSync",
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String,
+        ]
+        var marked = destination
+        try? marked.setResourceValues(values)
+
+        store.setFile(destination, source: device.name, sourceID: device.id)
+        onFileReceived?(destination, device.name)
+        if let item = store.current { onReceive?(item) }
+        return .json(["ok": true, "name": destination.lastPathComponent, "version": store.version])
+    }
+
+    private func ticketDownload(_ path: String) -> HTTPResponse {
+        // /dl/<ticket>/<name>; the name part is only there so the browser saves a sensible filename.
+        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard parts.count >= 2, let entry = downloadTickets[String(parts[1])], entry.expires > Date(),
+              let item = store.file(withID: entry.itemID) else {
+            return .text("This download link has expired. Tap Download again.", status: 410)
+        }
+        return Self.download(item) ?? .text("File no longer available", status: 410)
+    }
+
+    /// Streams a file item from disk as an attachment.
+    private static func download(_ item: ClipItem) -> HTTPResponse? {
+        guard let url = item.fileURL else { return nil }
+        let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+        guard var response = HTTPResponse.file(url, contentType: mime) else { return nil }
+        let name = url.lastPathComponent
+        let ascii = String(name.unicodeScalars.map { $0.isASCII && $0 != "\"" && $0 != "\\" && $0.value >= 0x20 ? Character($0) : "_" })
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "file"
+        response.headers["Content-Disposition"] = "attachment; filename=\"\(ascii)\"; filename*=UTF-8''\(encoded)"
+        return response
+    }
+
+    /// Strips paths, control characters and leading dots; keeps names short and non-empty.
+    static func safeFileName(_ raw: String) -> String {
+        var name = raw.components(separatedBy: CharacterSet(charactersIn: "/\\:")).last ?? ""
+        name = String(name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        while name.hasPrefix(".") { name.removeFirst() }
+        if name.count > 200 {
+            let ext = (name as NSString).pathExtension
+            let base = (name as NSString).deletingPathExtension
+            name = String(base.prefix(200 - ext.count - 1)) + (ext.isEmpty ? "" : "." + ext)
+        }
+        return name.isEmpty ? "File from phone" : name
+    }
+
+    /// "name.ext", then "name 2.ext", "name 3.ext"… — never overwrites an existing file.
+    static func uniqueURL(for name: String, in folder: URL) -> URL {
+        let ext = (name as NSString).pathExtension
+        let base = (name as NSString).deletingPathExtension
+        var candidate = folder.appendingPathComponent(name)
+        var n = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = folder.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
+            n += 1
+        }
+        return candidate
     }
 
     /// Token only from headers — never from the URL, where it would leak into history and logs.
