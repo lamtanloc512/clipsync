@@ -177,7 +177,14 @@ Do not create the release manually in the GitHub UI first: the workflow creates 
 
 ### Signing and notarization
 
-Releases are signed for team **MQT3MB6VWY** (`APPLE_TEAM_ID` in the workflow; a certificate from any other team is refused). With an Apple Developer account, releases are signed with **Developer ID** and **notarized**, so macOS opens them without any warning and keeps permissions (firewall, Downloads, notifications) across updates. The workflow does this automatically for releases when these repository secrets exist (**Settings → Secrets and variables → Actions → New repository secret**). Without them, releases are ad-hoc signed and a warning is printed.
+Releases are signed for team **MQT3MB6VWY** (`APPLE_TEAM_ID` in the workflow; a certificate from any other team is refused). With an Apple Developer account, releases are signed with **Developer ID** and **notarized**, so macOS opens them without any warning and keeps permissions (firewall, Downloads, notifications) across updates. The workflow's `sign` job does this for releases when these secrets exist in the **`release` environment**. Without them, releases are ad-hoc signed and a warning is printed.
+
+**Create the environment first** — this is what keeps the signing key safe in a public repository:
+
+1. **Settings → Environments → New environment** → name it `release`.
+2. **Deployment branches and tags** → *Selected branches and tags* → add the branch rule `main` and the tag rule `v*`. Only workflow runs from those refs can use the environment, so a workflow edited on another branch (or a fork) can never read the secrets.
+3. Optional: **Required reviewers** → yourself, to approve each signing run.
+4. In the environment, **Add environment secret** for each secret below. Don't add them as repository secrets (those are readable from any branch).
 
 | Secret | What it is |
 |---|---|
@@ -201,4 +208,6 @@ Releases are signed for team **MQT3MB6VWY** (`APPLE_TEAM_ID` in the workflow; a 
 
 Then run **Actions → Build → Run workflow** with a version. The release job's log shows `Signing as: Developer ID Application: …`, the notarization status `Accepted`, and `spctl` reporting `source=Notarized Developer ID`.
 
-Keep the `.p12`, its password and the `.p8` out of the repository, issues and chats; delete local copies once they are stored as secrets. Secrets are only given to the release steps that need them, and never to builds from forks.
+Keep the `.p12`, its password and the `.p8` out of the repository, issues and chats; delete local copies once they are stored as secrets.
+
+How the workflow protects them: building and testing (which run the app and third-party tooling) happen in the `build` job, which has no access to the secrets. Only the `sign` job, bound to the `release` environment, sees them; it re-signs the tested build, uses only SHA-pinned official actions, keeps the certificate in a temporary keychain that is deleted afterwards, and writes the notary key to a temp file it removes. Pull requests from forks never receive secrets. If a key ever leaks, revoke it: the certificate at [Certificates, IDs & Profiles](https://developer.apple.com/account/resources/certificates/list), the API key in App Store Connect.
