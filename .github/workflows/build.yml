@@ -43,6 +43,8 @@ jobs:
       # (see CONTRIBUTING.md → Releasing); test builds and forks stay ad-hoc signed.
       RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '') }}
       HAS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.NOTARY_API_KEY_P8 != '' }}
+      # Only this team's Developer ID may sign releases (public: it is visible in every signed app).
+      APPLE_TEAM_ID: MQT3MB6VWY
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,8 +66,11 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')
-          if [ -z "$IDENTITY" ]; then echo "::error::No 'Developer ID Application' identity in MACOS_CERTIFICATE_P12"; exit 1; fi
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep -o "\"Developer ID Application: [^\"]*($APPLE_TEAM_ID)\"" | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::MACOS_CERTIFICATE_P12 has no 'Developer ID Application' identity for team $APPLE_TEAM_ID"; exit 1
+          fi
           echo "Signing as: $IDENTITY"
           echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
@@ -245,6 +250,7 @@ jobs:
             --wait --timeout 30m --output-format json | tee notary.json
           rm -f "$KEY" notarize.zip
           python3 -c 'import json; s=json.load(open("notary.json"))["status"]; print("status:", s); assert s == "Accepted", s'
+          codesign -dv ClipSync.app 2>&1 | grep -q "^TeamIdentifier=$APPLE_TEAM_ID$"
           xcrun stapler staple ClipSync.app
           xcrun stapler validate ClipSync.app
           spctl --assess --type execute --verbose=2 ClipSync.app

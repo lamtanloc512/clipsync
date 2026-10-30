@@ -177,7 +177,7 @@ Do not create the release manually in the GitHub UI first: the workflow creates 
 
 ### Signing and notarization
 
-With an Apple Developer account, releases are signed with **Developer ID** and **notarized**, so macOS opens them without any warning and keeps permissions (firewall, Downloads, notifications) across updates. The workflow does this automatically for releases when these repository secrets exist (**Settings → Secrets and variables → Actions → New repository secret**). Without them, releases are ad-hoc signed and a warning is printed.
+Releases are signed for team **MQT3MB6VWY** (`APPLE_TEAM_ID` in the workflow; a certificate from any other team is refused). With an Apple Developer account, releases are signed with **Developer ID** and **notarized**, so macOS opens them without any warning and keeps permissions (firewall, Downloads, notifications) across updates. The workflow does this automatically for releases when these repository secrets exist (**Settings → Secrets and variables → Actions → New repository secret**). Without them, releases are ad-hoc signed and a warning is printed.
 
 | Secret | What it is |
 |---|---|
