@@ -1,0 +1,120 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v (e.g. 1.0.0). Leave empty for a test build."
+        required: false
+        default: ""
+
+# Read-only by default; only the tag-triggered release job can write.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build ClipSync.app
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            export VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "$INPUT_VERSION" ]]; then
+            export VERSION="$INPUT_VERSION"   # validated by build-app.sh
+          fi
+          ./build-app.sh
+
+      - name: Smoke test (HTTPS server, certificates, security checks)
+        run: |
+          ./ClipSync.app/Contents/MacOS/ClipSync > app.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID 2>/dev/null || true; echo "--- app log"; cat app.log' EXIT
+          for i in $(seq 1 30); do curl -sk -o /dev/null https://localhost:8765/ && break; sleep 1; done
+          URL=https://localhost:8765
+          status() { curl -sk -o /dev/null -w '%{http_code}' "$@"; }
+
+          echo "--- web client over HTTPS, with security headers and no CORS"
+          curl -skf -D headers.txt $URL/ | grep -q "<title>ClipSync</title>"
+          grep -qi '^content-security-policy:' headers.txt
+          if grep -qi '^access-control-allow-origin' headers.txt; then echo 'CORS header present'; exit 1; fi
+
+          echo "--- certificate chain validates against the ClipSync CA"
+          curl -skf $URL/ca.crt -o ca.der
+          openssl x509 -inform DER -in ca.der -out ca.pem
+          openssl x509 -in ca.pem -noout -subject -ext extendedKeyUsage,nameConstraints
+          echo | openssl s_client -connect localhost:8765 -servername localhost 2>/dev/null \
+            | openssl x509 -noout -subject -ext subjectAltName
+          curl -sf --cacert ca.pem -o /dev/null $URL/
+
+          echo "--- API requires pairing; token in the URL is not accepted"
+          test "$(status $URL/api/clipboard)" = 401
+          test "$(status "$URL/api/clipboard?token=anything")" = 401
+
+          echo "--- unauthenticated uploads are refused before the body is read"
+          head -c 5000000 /dev/zero > big.bin
+          test "$(status -X POST --data-binary @big.bin $URL/api/clipboard)" = 401
+
+          echo "--- pairing needs the one-time QR secret"
+          test "$(status -X POST -H 'Content-Type: application/json' -d '{"name":"CI"}' $URL/api/pair)" = 403
+          test "$(status -X POST -H 'Content-Type: application/json' -d '{"name":"CI","secret":"guess"}' $URL/api/pair)" = 403
+
+          echo "--- cross-origin requests and foreign Host headers are refused"
+          test "$(status -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' $URL/api/pair)" = 403
+          test "$(status -H 'Host: evil.example' $URL/)" = 400
+
+          echo "--- iOS profile is a valid plist"
+          curl -skf $URL/ca.mobileconfig -o profile.mobileconfig
+          plutil -lint profile.mobileconfig
+
+      - name: Package
+        run: |
+          ditto -c -k --keepParent ClipSync.app ClipSync-macOS.zip
+          shasum -a 256 ClipSync-macOS.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClipSync-macOS
+          path: |
+            ClipSync-macOS.zip
+            SHA256SUMS.txt
+
+  # Runs for a pushed v* tag, or for "Run workflow" with a version (which creates the tag).
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ClipSync-macOS
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          sha256sum -c SHA256SUMS.txt
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            [[ "$INPUT_VERSION" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || { echo "Invalid version: $INPUT_VERSION"; exit 1; }
+            TAG="v$INPUT_VERSION"
+          fi
+          # --target creates the tag on the built commit if it doesn't exist yet.
+          gh release create "$TAG" ClipSync-macOS.zip SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --title "ClipSync $TAG" --generate-notes
