@@ -134,16 +134,16 @@ final class SyncService {
             respond(page)
             return
         case ("GET", "/app.css"):
-            respond(Self.staticAsset(WebAssets.appCSS, type: "text/css; charset=utf-8", versioned: req.query["v"] != nil))
+            respond(Self.staticAsset(WebAssets.appCSS, gzipped: Self.appCSSGzip, type: "text/css; charset=utf-8", request: req))
             return
         case ("GET", "/app.js"):
-            respond(Self.staticAsset(WebAssets.appJS, type: "text/javascript; charset=utf-8", versioned: req.query["v"] != nil))
+            respond(Self.staticAsset(WebAssets.appJS, gzipped: Self.appJSGzip, type: "text/javascript; charset=utf-8", request: req))
             return
         case ("GET", "/manifest.webmanifest"):
-            respond(Self.staticAsset(WebAssets.manifest, type: "application/manifest+json", versioned: false))
+            respond(Self.staticAsset(WebAssets.manifest, type: "application/manifest+json", request: req))
             return
         case ("GET", "/icon.svg"):
-            respond(Self.staticAsset(WebAssets.iconSVG, type: "image/svg+xml", versioned: false))
+            respond(Self.staticAsset(WebAssets.iconSVG, type: "image/svg+xml", request: req))
             return
         case ("GET", let path) where WebAssets.pngIcons[path] != nil:
             var response = HTTPResponse.data(Data(base64Encoded: WebAssets.pngIcons[path] ?? "") ?? Data(),
@@ -310,10 +310,22 @@ final class SyncService {
         return obj
     }
 
-    /// Versioned URLs (?v=<content hash>) never change, so phones may cache them for good.
-    private static func staticAsset(_ body: String, type: String, versioned: Bool) -> HTTPResponse {
-        var response = HTTPResponse.data(Data(body.utf8), contentType: type)
-        response.headers["Cache-Control"] = versioned ? "public, max-age=31536000, immutable" : "no-cache"
+    private static let appCSSGzip = Data(base64Encoded: WebAssets.appCSSGzip)
+    private static let appJSGzip = Data(base64Encoded: WebAssets.appJSGzip)
+
+    /// Serves gzip when the browser accepts it. Always revalidated ("no-cache"): a long-lived cache
+    /// would keep a damaged copy around for good (v1.1.0 had that problem with truncated responses).
+    private static func staticAsset(_ body: String, gzipped: Data? = nil, type: String, request: HTTPRequest) -> HTTPResponse {
+        let acceptsGzip = (request.headers["accept-encoding"] ?? "").lowercased().contains("gzip")
+        var response: HTTPResponse
+        if let gzipped, acceptsGzip {
+            response = HTTPResponse.data(gzipped, contentType: type)
+            response.headers["Content-Encoding"] = "gzip"
+        } else {
+            response = HTTPResponse.data(Data(body.utf8), contentType: type)
+        }
+        if gzipped != nil { response.headers["Vary"] = "Accept-Encoding" }
+        response.headers["Cache-Control"] = "no-cache"
         return response
     }
 

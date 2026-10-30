@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.0   # pinned: gzip output must match the committed file
       - name: Rebuild web assets
         working-directory: web
         run: |
@@ -67,8 +67,21 @@ jobs:
           curl -skf -D headers.txt $URL/ | grep -q "<title>ClipSync</title>"
           grep -i '^content-security-policy:' headers.txt | grep -q "script-src 'self';"
           if grep -qi '^access-control-allow-origin' headers.txt; then echo 'CORS header present'; exit 1; fi
-          curl -skf $URL/app.css | grep -q '\.btn'
-          curl -skf $URL/app.js | grep -q 'ClipSync phone client'
+
+          echo "--- CSS/JS arrive complete over a slow link, plain and gzip (v1.1.0 truncated them)"
+          ( set -o pipefail
+          for asset in app.css app.js; do
+            ver=$(curl -skf $URL/ | grep -o "/$asset?v=[0-9a-f]*" | cut -d= -f2)
+            test -n "$ver"
+            curl -skf --limit-rate 40k -D plain.h "$URL/$asset?v=$ver" -o "plain-$asset"
+            curl -skf --limit-rate 40k -D gz.h --compressed "$URL/$asset?v=$ver" -o "gz-$asset"
+            grep -qi '^content-encoding: gzip' gz.h
+            test "$(grep -i '^content-length:' plain.h | tr -dc 0-9)" = "$(wc -c < plain-$asset | tr -dc 0-9)"
+            cmp "plain-$asset" "gz-$asset"
+            echo "$asset: $(wc -c < plain-$asset) bytes, gzip $(grep -i '^content-length:' gz.h | tr -dc 0-9) bytes"
+          done
+          grep -q '\.btn' plain-app.css
+          grep -q 'ClipSync phone client' plain-app.js )
           curl -skf $URL/manifest.webmanifest | python3 -m json.tool > /dev/null
 
           echo "--- app icon is bundled and the web icons are served"

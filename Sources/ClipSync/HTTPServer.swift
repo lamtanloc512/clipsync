@@ -63,6 +63,8 @@ final class HTTPServer {
     static let maxConnections = 64
     /// A client must deliver its whole request within this time (slowloris protection).
     static let requestTimeout: TimeInterval = 20
+    /// How long a finished response may wait for the client to close before it is cut off.
+    static let lingerTimeout: TimeInterval = 30
 
     let port: UInt16
     private let identity: SecIdentity
@@ -223,9 +225,27 @@ final class HTTPServer {
         head += "\r\n"
         var out = Data(head.utf8)
         out.append(response.body)
-        connection.nw.send(content: out, completion: .contentProcessed { _ in
-            connection.nw.cancel()
+        // Send as the final message (TLS close_notify + FIN after the data), then let the client
+        // finish reading and close first. Cancelling as soon as the data is handed to the stack
+        // can cut off large responses still in flight — phones then got a truncated stylesheet.
+        connection.nw.send(content: out, contentContext: .finalMessage, isComplete: true,
+                           completion: .contentProcessed { [weak self] error in
+            guard error == nil else { connection.nw.cancel(); return }
+            connection.timeout = scheduleTimer(after: Self.lingerTimeout) { _ in connection.nw.cancel() }
+            self?.drainUntilClosed(connection)
         })
+    }
+
+    /// Reads (and discards) until the client closes its side, then releases the connection.
+    private func drainUntilClosed(_ connection: Connection) {
+        connection.nw.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] _, _, isComplete, error in
+            if isComplete || error != nil || self == nil {
+                connection.timeout?.invalidate()
+                connection.nw.cancel()
+                return
+            }
+            self?.drainUntilClosed(connection)
+        }
     }
 
     // MARK: - Peer filtering

@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const BASECOAT_REPO = 'https://github.com/lamtanloc512/basecoat.git';
 const BASECOAT_COMMIT = 'fb97086a83ed20a5be7ee5fe4c5422ed9cfb3b6b';
@@ -55,17 +56,22 @@ writeFileSync(join(cache, 'app.input.css'), cssInput);
 execFileSync(join(web, 'node_modules/.bin/tailwindcss'),
   ['-i', join(cache, 'app.input.css'), '-o', join(cache, 'app.css'), '--minify'],
   { stdio: 'inherit' });
-const css = readFileSync(join(cache, 'app.css'), 'utf8');
+// Normalised once, so the plain, gzip and Swift copies are byte-for-byte the same.
+const normalize = (text) => text.replace(/\r\n/g, '\n').replace(/\n$/, '');
+const css = normalize(readFileSync(join(cache, 'app.css'), 'utf8'));
 
 // --- JS ----------------------------------------------------------------------
 const vendor = ['basecoat.js', 'toast.js']
   .map((f) => `/* Basecoat ${f} (MIT) — ${BASECOAT_REPO} @ ${BASECOAT_COMMIT.slice(0, 7)} */\n` +
     readFileSync(join(basecoat, 'src/js', f), 'utf8'))
   .join('\n');
-const js = `${vendor}\n/* ClipSync (GPL-3.0) */\n${readFileSync(join(web, 'app.js'), 'utf8')}`;
+const js = normalize(`${vendor}\n/* ClipSync (GPL-3.0) */\n${readFileSync(join(web, 'app.js'), 'utf8')}`);
 
 // --- HTML & static files -------------------------------------------------------
-const short = (s) => createHash('sha256').update(s).digest('hex').slice(0, 12);
+// Asset URLs carry a content hash. Bump ASSET_SALT to force phones to refetch unchanged content
+// (2: v1.1.0 could cache a truncated stylesheet for a year).
+const ASSET_SALT = '2';
+const short = (s) => createHash('sha256').update(ASSET_SALT).update(s).digest('hex').slice(0, 12);
 const html = readFileSync(join(web, 'index.html'), 'utf8')
   .replace('__CSS_VERSION__', short(css))
   .replace('__JS_VERSION__', short(js));
@@ -93,6 +99,12 @@ enum WebAssets {
     static let appCSS = ${swiftString(css)}
 
     static let appJS = ${swiftString(js)}
+
+    /// Pre-compressed copies, served when the browser accepts gzip (~7x smaller).
+    static let appCSSGzip = "${gzipSync(css, { level: 9 }).toString('base64')}"
+    static let appJSGzip = "${gzipSync(js, { level: 9 }).toString('base64')}"
+    static let cssVersion = "${short(css)}"
+    static let jsVersion = "${short(js)}"
 
     static let manifest = ${swiftString(manifest)}
 
