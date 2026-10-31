@@ -19,7 +19,11 @@ Chạy trên **macOS 11+** và **Android (Chrome)** hoặc **iPhone/iPad (iOS 16
 
 ClipSync nằm trên thanh menu (biểu tượng clipboard) và hiện mã QR ở lần mở đầu tiên.
 
+<p align="center"><img src="docs/images/menu.png" alt="Menu ClipSync trên thanh menu macOS" width="420"></p>
+
 ## 2. Kết nối điện thoại
+
+<img src="docs/images/pair-window.png" alt="Cửa sổ Pair a phone với mã QR, mã pair và fingerprint chứng chỉ" width="260" align="right">
 
 1. Quét mã QR bằng camera điện thoại. (Lần sau: biểu tượng trên thanh menu → **Pair a Phone**.)
 2. Trình duyệt báo kết nối không riêng tư. Điều này là bình thường ở lần đầu, vì Mac dùng chứng chỉ riêng. Cứ tiếp tục (Android: **Advanced → Proceed**; iPhone: **Show Details → visit this website**).
@@ -56,6 +60,10 @@ Trên iPhone, app đã cài không dùng chung dữ liệu với Safari, nên h�
 | Gỡ pair | Thanh menu → **Paired Devices** → chọn điện thoại → **Unpair**. |
 
 Trang web không chạy nền được, nên điện thoại đồng bộ khi ClipSync đang mở và tự bắt kịp ngay khi bạn mở lại.
+
+Mục **Recent** trên menu giữ 20 nội dung gần nhất: chữ, ảnh và file từ Mac hoặc điện thoại (📱/💻 cho biết nguồn). Bấm vào để copy lại.
+
+<p align="center"><img src="docs/images/menu-recent.png" alt="Menu con Recent với ảnh, link và file" width="560"></p>
 
 ## Xử lý sự cố
 

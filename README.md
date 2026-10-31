@@ -19,7 +19,11 @@ Works with **macOS 11+** and **Android (Chrome)** or **iPhone/iPad (iOS 16.4+)**
 
 ClipSync lives in the menu bar (clipboard icon) and shows a QR code the first time.
 
+<p align="center"><img src="docs/images/menu.png" alt="The ClipSync menu in the macOS menu bar" width="420"></p>
+
 ## 2. Connect your phone
+
+<img src="docs/images/pair-window.png" alt="The Pair a phone window with the QR code, pairing code and certificate fingerprint" width="260" align="right">
 
 1. Scan the QR code with your phone's camera. (Later: menu bar icon → **Pair a Phone**.)
 2. The browser warns that the connection isn't private — expected the first time, as your Mac uses its own certificate. Continue anyway (Android: **Advanced → Proceed**; iPhone: **Show Details → visit this website**).
@@ -56,6 +60,10 @@ On iPhone, the installed app doesn't share Safari's data, so pair it from inside
 | Unpair | Menu bar → **Paired Devices** → choose a phone → **Unpair**. |
 
 Web pages can't run in the background, so the phone syncs while ClipSync is open and catches up as soon as you open it.
+
+**Recent** in the menu keeps the last 20 items — text, images and files from the Mac or your phones (📱/💻 shows where they came from). Click one to copy it again.
+
+<p align="center"><img src="docs/images/menu-recent.png" alt="The Recent submenu listing images, links and files" width="560"></p>
 
 ## Troubleshooting
 
