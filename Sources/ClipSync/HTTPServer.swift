@@ -19,8 +19,10 @@ struct HTTPResponse {
     var contentType: String
     var body: Data
     var headers: [String: String] = [:]
-    /// Streams this file from disk instead of `body` (for large downloads).
-    var file: (url: URL, length: Int)? = nil
+    /// Streams `length` bytes of this file from `offset` instead of `body` (large downloads, ranges).
+    var file: (url: URL, offset: Int, length: Int)? = nil
+    /// HEAD requests: send the headers (with the real Content-Length) but no body.
+    var omitBody = false
 
     /// A response that streams `url` from disk, or nil if it isn't a readable regular file.
     static func file(_ url: URL, contentType: String) -> HTTPResponse? {
@@ -28,7 +30,7 @@ struct HTTPResponse {
               values.isRegularFile == true, let size = values.fileSize,
               FileManager.default.isReadableFile(atPath: url.path) else { return nil }
         var response = HTTPResponse(status: 200, contentType: contentType, body: Data())
-        response.file = (url, size)
+        response.file = (url, 0, size)
         return response
     }
 
@@ -319,10 +321,19 @@ final class HTTPServer {
         if !connection.bodyDelivered { connection.discardPartialUpload() }
 
         var fileHandle: FileHandle?
-        if let file = response.file {
+        if let file = response.file, !response.omitBody {
             guard let handle = try? FileHandle(forReadingFrom: file.url) else {
-                finish(connection, .text("Not found", status: 404))
+                // Usually macOS privacy protection (Desktop, Documents, iCloud Drive…).
+                NSLog("ClipSync: cannot read %@", file.url.path)
+                finish(connection, .text("ClipSync can’t read this file on the Mac. Allow it under System Settings → Privacy & Security → Files and Folders (or Full Disk Access), then try again.", status: 403))
                 return
+            }
+            if file.offset > 0 {
+                do { try handle.seek(toOffset: UInt64(file.offset)) } catch {
+                    try? handle.close()
+                    finish(connection, .text("Cannot read the file", status: 500))
+                    return
+                }
             }
             fileHandle = handle
         }
@@ -340,23 +351,27 @@ final class HTTPServer {
         for (k, v) in headers { head += "\(k): \(v)\r\n" }
         head += "\r\n"
 
-        guard let fileHandle else {
+        guard let fileHandle, let file = response.file else {
             var out = Data(head.utf8)
-            out.append(response.body)
+            if !response.omitBody { out.append(response.body) }
             sendFinal(out, on: connection)
             return
         }
         connection.nw.send(content: Data(head.utf8), completion: .contentProcessed { [weak self] error in
             guard error == nil else { try? fileHandle.close(); connection.nw.cancel(); return }
-            self?.pump(fileHandle, to: connection)
+            self?.pump(fileHandle, remaining: file.length, to: connection)
         })
     }
 
     /// Streams a file in chunks; the next chunk is read only once the previous one was taken
     /// by the network stack, so memory use stays flat whatever the file size.
-    private func pump(_ handle: FileHandle, to connection: Connection) {
+    private func pump(_ handle: FileHandle, remaining: Int, to connection: Connection) {
         let chunk: Data?
-        do { chunk = try handle.read(upToCount: Self.streamChunk) } catch { chunk = nil }
+        if remaining <= 0 {
+            chunk = nil
+        } else {
+            do { chunk = try handle.read(upToCount: min(Self.streamChunk, remaining)) } catch { chunk = nil }
+        }
         guard let chunk, !chunk.isEmpty else {
             try? handle.close()
             sendFinal(nil, on: connection)
@@ -365,7 +380,7 @@ final class HTTPServer {
         resetIdleTimer(connection)
         connection.nw.send(content: chunk, completion: .contentProcessed { [weak self] error in
             guard error == nil, let self else { try? handle.close(); connection.nw.cancel(); return }
-            self.pump(handle, to: connection)
+            self.pump(handle, remaining: remaining - chunk.count, to: connection)
         })
     }
 
@@ -484,6 +499,7 @@ final class HTTPServer {
         switch status {
         case 200: return "OK"
         case 204: return "No Content"
+        case 206: return "Partial Content"
         case 303: return "See Other"
         case 400: return "Bad Request"
         case 401: return "Unauthorized"
@@ -493,6 +509,7 @@ final class HTTPServer {
         case 410: return "Gone"
         case 411: return "Length Required"
         case 413: return "Payload Too Large"
+        case 416: return "Range Not Satisfiable"
         case 415: return "Unsupported Media Type"
         case 429: return "Too Many Requests"
         case 431: return "Request Header Fields Too Large"

@@ -176,6 +176,17 @@ jobs:
           curl -skf -D dl.h "$URL$dl" -o downloaded.bin
           grep -qi '^content-disposition: attachment' dl.h
           test "$(shasum -a 256 downloaded.bin | cut -c1-64)" = "$want"
+          echo "--- downloads support HEAD and byte ranges (download managers resume with them)"
+          curl -skf -I "$URL$dl" > head.h
+          grep -qi '^content-length: 314572800' head.h
+          grep -qi '^accept-ranges: bytes' head.h
+          test "$(curl -sk -r 1000-1999 -D range.h -o part.bin -w '%{http_code}' "$URL$dl")" = 206
+          grep -qi '^content-range: bytes 1000-1999/314572800' range.h
+          test "$(wc -c < part.bin | tr -d ' ')" = 1000
+          cmp part.bin <(tail -c +1001 big.bin | head -c 1000)
+          test "$(curl -sk -r 314572700- -o tail.bin -w '%{http_code}' "$URL$dl")" = 206
+          test "$(wc -c < tail.bin | tr -d ' ')" = 100
+          test "$(curl -sk -r 999999999- -o /dev/null -w '%{http_code}' "$URL$dl")" = 416
           test "$(status "$URL/dl/not-a-ticket/x")" = 410
           test "$(status -X POST "$URL/api/files/ticket?id=$id")" = 401
 

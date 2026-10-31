@@ -124,7 +124,7 @@ final class SyncService {
         }
         // Download links carry their own short-lived ticket instead of the device token (browsers
         // can't add headers to a download).
-        if head.method == "GET", head.path.hasPrefix("/dl/") {
+        if head.method == "GET" || head.method == "HEAD", head.path.hasPrefix("/dl/") {
             return .accept(maxBody: 0)
         }
         guard head.path.hasPrefix("/api/") else {
@@ -225,8 +225,8 @@ final class SyncService {
             break
         }
 
-        if req.method == "GET", req.path.hasPrefix("/dl/") {
-            respond(ticketDownload(req.path))
+        if req.method == "GET" || req.method == "HEAD", req.path.hasPrefix("/dl/") {
+            respond(ticketDownload(req))
             return
         }
         guard req.path.hasPrefix("/api/") else {
@@ -266,7 +266,7 @@ final class SyncService {
             switch item.kind {
             case .text: respond(.text(item.text ?? ""))
             case .image: respond(.data(item.image ?? Data(), contentType: "image/png"))
-            case .file: respond(Self.download(item) ?? .text("File no longer available", status: 410))
+            case .file: respond(Self.download(item, request: req) ?? .text("File no longer available", status: 410))
             }
 
         case ("POST", "/api/files"):
@@ -438,26 +438,57 @@ final class SyncService {
         return .json(["ok": true, "name": destination.lastPathComponent, "version": store.version])
     }
 
-    private func ticketDownload(_ path: String) -> HTTPResponse {
+    private func ticketDownload(_ req: HTTPRequest) -> HTTPResponse {
         // /dl/<ticket>/<name>; the name part is only there so the browser saves a sensible filename.
-        let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+        let parts = req.path.split(separator: "/", omittingEmptySubsequences: true)
         guard parts.count >= 2, let entry = downloadTickets[String(parts[1])], entry.expires > Date(),
               let item = store.file(withID: entry.itemID) else {
             return .text("This download link has expired. Tap Download again.", status: 410)
         }
-        return Self.download(item) ?? .text("File no longer available", status: 410)
+        return Self.download(item, request: req) ?? .text("File no longer available", status: 410)
     }
 
-    /// Streams a file item from disk as an attachment.
-    private static func download(_ item: ClipItem) -> HTTPResponse? {
+    /// Streams a file item from disk as an attachment. Supports HEAD and single byte ranges, which
+    /// download managers (Android's included) use to check and resume downloads.
+    private static func download(_ item: ClipItem, request: HTTPRequest) -> HTTPResponse? {
         guard let url = item.fileURL else { return nil }
         let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-        guard var response = HTTPResponse.file(url, contentType: mime) else { return nil }
+        guard var response = HTTPResponse.file(url, contentType: mime), let total = response.file?.length else { return nil }
+        response.headers["Accept-Ranges"] = "bytes"
+        if let rangeHeader = request.headers["range"] {
+            guard let range = byteRange(rangeHeader, size: total) else {
+                var refused = HTTPResponse.text("Range not satisfiable", status: 416)
+                refused.headers["Content-Range"] = "bytes */\(total)"
+                return refused
+            }
+            response.status = 206
+            response.file = (url, range.lowerBound, range.count)
+            response.headers["Content-Range"] = "bytes \(range.lowerBound)-\(range.upperBound - 1)/\(total)"
+        }
+        response.omitBody = request.method == "HEAD"
         let name = url.lastPathComponent
         let ascii = String(name.unicodeScalars.map { $0.isASCII && $0 != "\"" && $0 != "\\" && $0.value >= 0x20 ? Character($0) : "_" })
         let encoded = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "file"
         response.headers["Content-Disposition"] = "attachment; filename=\"\(ascii)\"; filename*=UTF-8''\(encoded)"
         return response
+    }
+
+    /// Parses a single `bytes=` range ("a-b", "a-" or "-n"). Nil if malformed or outside the file.
+    static func byteRange(_ header: String, size: Int) -> Range<Int>? {
+        let value = header.trimmingCharacters(in: .whitespaces).lowercased()
+        guard value.hasPrefix("bytes="), size > 0 else { return nil }
+        let spec = value.dropFirst(6)
+        guard !spec.contains(","), let dash = spec.firstIndex(of: "-") else { return nil }
+        let first = spec[..<dash].trimmingCharacters(in: .whitespaces)
+        let last = spec[spec.index(after: dash)...].trimmingCharacters(in: .whitespaces)
+        if first.isEmpty {
+            guard let suffix = Int(last), suffix > 0 else { return nil }
+            return max(0, size - suffix)..<size
+        }
+        guard let start = Int(first), start >= 0, start < size else { return nil }
+        if last.isEmpty { return start..<size }
+        guard let end = Int(last), end >= start else { return nil }
+        return start..<(min(end, size - 1) + 1)
     }
 
     /// Strips paths, control characters and leading dots; keeps names short and non-empty.

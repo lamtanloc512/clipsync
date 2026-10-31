@@ -534,27 +534,76 @@
     xhr.send(file);
   }
 
-  // Downloads use a short-lived link from the Mac, so the browser's own download manager can
-  // stream large files to disk (a fetch() would hold the whole file in memory).
+  // Downloads use a short-lived link from the Mac. When the Mac's certificate is trusted (the
+  // service worker only runs then), the browser's download manager fetches it — best for big
+  // files. Otherwise that separate request can be refused over the untrusted certificate (Chrome
+  // on Android), so the page downloads it itself over its already-accepted connection.
+  const IN_PAGE_DOWNLOAD_LIMIT = 1024 * 1024 * 1024;
+
   $('downloadBtn').addEventListener('click', async () => {
     if (!current || current.kind !== 'file') return;
+    const item = current;
+    const name = item.text || 'file';
     try {
-      const r = await fetch(`/api/files/ticket?id=${encodeURIComponent(current.id)}`, {
+      const r = await fetch(`/api/files/ticket?id=${encodeURIComponent(item.id)}`, {
         method: 'POST', headers: authHeaders(),
       });
       if (r.status === 401) { unpaired('This phone is no longer paired. Pair it again.'); return; }
       if (!r.ok) { toast('This file is no longer available', 'error'); return; }
       const { url } = await r.json();
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = current.text || '';
-      document.body.append(link);
-      link.click();
-      link.remove();
+
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        saveLink(url, name);
+        toast('Downloading…', 'info');
+        return;
+      }
+      if ((item.size || 0) > IN_PAGE_DOWNLOAD_LIMIT) {
+        toast('Large file: trust your Mac’s certificate (⚙ Settings) to download it', 'error');
+        return;
+      }
+      await downloadInPage(url, name, item.size || 0);
     } catch {
       toast('Could not reach your Mac', 'error');
     }
   });
+
+  function saveLink(url, name) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+
+  async function downloadInPage(url, name, size) {
+    const row = addUploadRow({ name, size });
+    row.progress(0);
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok || !r.body) {
+      row.finish(r.status === 403 ? 'Your Mac can’t read this file (macOS privacy settings)' : `Failed (${r.status})`, false);
+      return;
+    }
+    const total = Number(r.headers.get('Content-Length')) || size;
+    const reader = r.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (total) row.progress((received / total) * 100);
+    }
+    if (total && received !== total) {
+      row.finish('Download interrupted, try again', false);
+      return;
+    }
+    const blobURL = URL.createObjectURL(new Blob(chunks, { type: r.headers.get('Content-Type') || 'application/octet-stream' }));
+    saveLink(blobURL, name);
+    setTimeout(() => URL.revokeObjectURL(blobURL), 60000);
+    row.finish(`${formatSize(received)} · downloaded`, true);
+  }
 
   // ---------- Android share sheet (Web Share Target) ----------
   // sw.js parks shared items in a cache and opens /?shared=1; send them now that we have the token.
