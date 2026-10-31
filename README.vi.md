@@ -51,6 +51,8 @@ Trên iPhone, app đã cài không dùng chung dữ liệu với Safari, nên h�
 
 ## 3. Sử dụng
 
+<p align="center"><img src="docs/images/phone.png" alt="ClipSync trên iPhone: công tắc tự đồng bộ, gửi file và nội dung mới nhất từ Mac" width="300"></p>
+
 | | Cách làm |
 |---|---|
 | Mac → điện thoại | Copy trên Mac. Android chép vào ngay; trên iPhone, chạm vào bất kỳ đâu trong ClipSync. |

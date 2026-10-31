@@ -51,6 +51,8 @@ On iPhone, the installed app doesn't share Safari's data, so pair it from inside
 
 ## 3. Use it
 
+<p align="center"><img src="docs/images/phone.png" alt="ClipSync on an iPhone: auto sync switches, file sending and the latest item from the Mac" width="300"></p>
+
 | | How |
 |---|---|
 | Mac → phone | Copy on the Mac. Android copies it right away; on iPhone, tap anywhere in ClipSync. |
