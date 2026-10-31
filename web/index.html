@@ -95,6 +95,15 @@
             <footer><button id="grantBtn" type="button" class="btn" data-size="sm">Allow</button></footer>
           </div>
           <button id="sendNowBtn" type="button" class="btn" data-variant="secondary" hidden>Send clipboard to Mac</button>
+          <div role="group" class="field" data-orientation="horizontal">
+            <input type="checkbox" id="pushToggle" role="switch" class="input">
+            <label for="pushToggle">Notify me when ClipSync is closed</label>
+          </div>
+          <div id="pushPreviewRow" role="group" class="field" data-orientation="horizontal" hidden>
+            <input type="checkbox" id="pushPreview" role="switch" class="input">
+            <label for="pushPreview">Show what was copied in the notification</label>
+          </div>
+          <div id="pushHint" class="text-xs text-muted-foreground"></div>
         </section>
       </section>
 

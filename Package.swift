@@ -5,6 +5,9 @@ let package = Package(
     name: "ClipSync",
     platforms: [.macOS(.v11)],
     targets: [
-        .executableTarget(name: "ClipSync", path: "Sources/ClipSync")
+        // Web Push encryption + VAPID, kept separate so it can be unit-tested against RFC 8291.
+        .target(name: "WebPushCrypto", path: "Sources/WebPushCrypto"),
+        .executableTarget(name: "ClipSync", dependencies: ["WebPushCrypto"], path: "Sources/ClipSync"),
+        .testTarget(name: "WebPushCryptoTests", dependencies: ["WebPushCrypto"], path: "Tests/WebPushCryptoTests"),
     ]
 )

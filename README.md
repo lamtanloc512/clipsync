@@ -7,6 +7,7 @@ Copy on your Mac, paste on your phone — and the other way round. ClipSync sync
 - **Clipboard sync both ways**, automatically while ClipSync is open on the phone
 - **Files and videos of any size**, phone → Mac's Downloads, or Mac → phone
 - **Share menu on Android:** send photos, videos and links from any app
+- **Notifications** for Mac copies even while ClipSync is closed on the phone
 - **Private and secure:** stays on your network, encrypted, pairing confirmed on the Mac
 
 Works with **macOS 11+** and **Android (Chrome)** or **iPhone/iPad (iOS 16.4+)** on the same Wi‑Fi.
@@ -61,7 +62,7 @@ On iPhone, the installed app doesn't share Safari's data, so pair it from inside
 | Files Mac → phone | Copy a file in Finder (⌘C) or use **Send File to Phones…** in the menu, then tap **Download** on the phone. |
 | Unpair | Menu bar → **Paired Devices** → choose a phone → **Unpair**. |
 
-Web pages can't run in the background, so the phone syncs while ClipSync is open and catches up as soon as you open it.
+Web pages can't run in the background, so the phone syncs while ClipSync is open and catches up as soon as you open it. To hear about Mac copies while it's closed, turn on **Notify me when ClipSync is closed**: each copy on the Mac shows a notification — tap it and ClipSync opens and copies it. (Needs Internet on both devices; on Android the certificate must be trusted, on iPhone use the Home Screen app.) To send from Android without opening ClipSync, tap **Share** in the clipboard popup that appears after copying, then **ClipSync**.
 
 **Recent** in the menu keeps the last 20 items — text, images and files from the Mac or your phones (📱/💻 shows where they came from). Click one to copy it again.
 
@@ -79,7 +80,7 @@ Web pages can't run in the background, so the phone syncs while ClipSync is open
 
 ## Privacy & security
 
-Everything stays on your network — ClipSync has no servers and no analytics. Connections are encrypted (HTTPS), pairing needs the QR code from your Mac's screen plus your click on **Accept**, and each phone can be unpaired at any time. A paired phone can read what you copy and change your Mac's clipboard, so only pair your own devices. Details: [SECURITY.md](SECURITY.md).
+Everything stays on your network — ClipSync has no servers and no analytics. The optional notifications travel through Google's or Apple's push service, end-to-end encrypted and, by default, without any clipboard content. Connections are encrypted (HTTPS), pairing needs the QR code from your Mac's screen plus your click on **Accept**, and each phone can be unpaired at any time. A paired phone can read what you copy and change your Mac's clipboard, so only pair your own devices. Details: [SECURITY.md](SECURITY.md).
 
 ## For developers
 

@@ -44,6 +44,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Unit tests (Web Push encryption, RFC 8291 test vector)
+        run: swift test
+
       - name: Build ClipSync.app
         env:
           INPUT_VERSION: ${{ inputs.version }}
@@ -203,6 +206,21 @@ jobs:
           sleep 1.5
           curl -skf -H "X-Token: $TOKEN" $URL/api/clipboard | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["kind"]=="file" and d["text"]=="finder-copy.txt", d'
           rm -f big.bin downloaded.bin )
+
+          echo "--- Web Push: VAPID key served, only real push services accepted"
+          curl -skf -H "X-Token: $TOKEN" $URL/api/push/key | python3 -c '
+          import base64, json, sys
+          key = json.load(sys.stdin)["key"]
+          raw = base64.urlsafe_b64decode(key + "=" * (-len(key) % 4))
+          assert len(raw) == 65 and raw[0] == 4, len(raw)'
+          test "$(status $URL/api/push/key)" = 401
+          sub() { status -X POST -H "X-Token: $TOKEN" -H 'Content-Type: application/json' -d "$1" $URL/api/push/subscribe; }
+          GOODKEY=BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4
+          test "$(sub '{"endpoint":"https://evil.example/push","keys":{"p256dh":"'$GOODKEY'","auth":"BTBZMqHH6r4Tts7J_aSIgg"}}')" = 400
+          test "$(sub '{"endpoint":"http://fcm.googleapis.com/fcm/send/x","keys":{"p256dh":"'$GOODKEY'","auth":"BTBZMqHH6r4Tts7J_aSIgg"}}')" = 400
+          test "$(sub '{"endpoint":"https://fcm.googleapis.com/fcm/send/x","keys":{"p256dh":"bad","auth":"BTBZMqHH6r4Tts7J_aSIgg"}}')" = 400
+          test "$(status -X POST -H "X-Token: $TOKEN" -H 'Content-Type: application/json' -d '{"visible":false}' $URL/api/presence)" = 204
+          test "$(status -X POST -H "X-Token: $TOKEN" $URL/api/push/unsubscribe)" = 200
 
           echo "--- iOS profile is a valid plist"
           curl -skf $URL/ca.mobileconfig -o profile.mobileconfig

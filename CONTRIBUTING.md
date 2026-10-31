@@ -85,6 +85,7 @@ ClipSync is a single macOS menu-bar app. Phones are plain HTTPS clients: a web p
 | `PairingWindow.swift` | QR code window (`.local` URL with IP fallback, CA fingerprint) |
 | `PairRequestWindow.swift` | Non-modal Accept/Reject panel |
 | `LoginItem.swift` | Launch at Login: `SMAppService` on macOS 13+, a LaunchAgent on 11–12 |
+| `PushService.swift` | Web Push: subscriptions, VAPID key, sends a notification (debounced) to phones that aren't online |
 | `HostnamePublisher.swift` | Publishes `clipsync.local` (mDNS A records via `dns_sd`), picks `clipsync-xxxx.local` on conflict |
 | `WebAssets.generated.swift` | The phone web client, generated from `web/` (do not edit) |
 | `Util.swift` | Common-mode timers, secure random strings, constant-time comparison |
@@ -95,6 +96,7 @@ Design notes:
 - **Timers are added in `.common` run-loop mode** (`scheduleTimer`), so they keep firing while menus are open.
 - **No third-party dependencies.** Please discuss in an issue before adding one.
 - **Auto sync on the phone is bounded by browser rules:** Chrome/Android can write the clipboard while the page has focus and read it once the `clipboard-read` permission is granted; Safari/iOS needs a tap for both. `web/app.js` documents the behaviour at the top. The client keeps only a SHA-256 of the last synced text (never the text itself) to avoid echoing items back.
+- **Web Push without a server:** `Sources/WebPushCrypto` implements RFC 8291 encryption and RFC 8292 VAPID with CryptoKit and is unit-tested against the RFC 8291 test vector (`swift test`). The Mac posts straight to the phone's push service; the default payload has no clipboard content.
 - **Mac → phone sync uses long polling:** `GET /api/clipboard?since=<version>&wait=25` returns as soon as the clipboard version changes.
 
 ### Pairing flow
@@ -140,7 +142,11 @@ All endpoints are HTTPS on port 8765. Authenticated endpoints need `X-Token: <to
 | GET | `/api/clipboard/raw` | ✓ | Current item as `text/plain` or `image/png` |
 | GET | `/api/clipboard/image` | ✓ | Current image as PNG |
 | POST | `/api/clipboard` | ✓ | Body: text, `{"text": "..."}`, or an image (PNG/JPEG/HEIC) |
-| POST | `/api/unpair` | ✓ | Unpairs the calling device |
+| POST | `/api/unpair` | ✓ | Unpairs the calling device (and drops its push subscription) |
+| GET | `/api/push/key` | ✓ | `{key, subscribed, preview}`: the Mac's VAPID public key |
+| POST | `/api/push/subscribe` | ✓ | `PushSubscription.toJSON()` plus `preview`. Endpoints must be FCM, Apple or Mozilla push services (https) |
+| POST | `/api/push/unsubscribe` | ✓ | Stops notifications for the calling device |
+| POST | `/api/presence` | ✓ | `{visible}`: the page reports going to the background, so the Mac notifies instead of relying on the long poll |
 | POST | `/api/files` | ✓ | Upload a file: raw body, `X-Filename` (percent-encoded), `Content-Length` required. Streamed to `~/Downloads` (20 GB default cap, `maxUploadGB`), quarantined, put on the clipboard |
 | POST | `/api/files/ticket?id=<item id>` | ✓ | `{url}`: a `/dl/<ticket>/<name>` link valid for 10 minutes, so the browser's download manager can fetch the file without the token |
 | GET | `/dl/<ticket>/<name>` | ticket | Streams the file item as an attachment |

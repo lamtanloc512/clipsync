@@ -76,3 +76,45 @@ async function receiveShare(request) {
 
   return Response.redirect('/?shared=1', 303);
 }
+
+// ---------- Notifications (Web Push from the Mac) ----------
+// The message usually has no clipboard content (only what kind of item it is); with "Show what was
+// copied" on, it has a short preview. Tapping opens ClipSync, which fetches the item from the Mac.
+self.addEventListener('push', (event) => {
+  let message = {};
+  try { message = event.data ? event.data.json() : {}; } catch { /* not JSON */ }
+  const from = message.s && message.s !== 'Mac' ? message.s : 'your Mac';
+  let title = `New from ${from}`;
+  let body = 'Tap to copy it to this phone.';
+  if (message.k === 'image') body = 'An image — tap to copy it.';
+  if (message.k === 'file') {
+    title = `File from ${from}`;
+    body = message.n ? `${message.n} — tap to download.` : 'Tap to download it.';
+  }
+  if (message.t) body = message.t;
+
+  event.waitUntil((async () => {
+    // Skip it if ClipSync is already on screen: it syncs by itself.
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (windows.some((client) => client.visibilityState === 'visible')) return;
+    await self.registration.showNotification(title, {
+      body,
+      tag: 'clipsync-clipboard',   // one notification, replaced by the newest
+      renotify: true,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: '/?from=notification' },
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).origin === self.location.origin && 'focus' in client) return client.focus();
+    }
+    return self.clients.openWindow('/?from=notification');
+  })());
+});

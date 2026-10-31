@@ -40,6 +40,8 @@
   // server or in Referer headers; remove it from the address bar right away.
   let pairSecret = new URLSearchParams(location.hash.slice(1)).get('k');
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  // Opened from a notification: the normal start-up copies the newest Mac item.
+  if (new URLSearchParams(location.search).get('from') === 'notification') history.replaceState(null, '', '/');
 
   const prefs = {
     autoReceive: store.get('clipsync.autoReceive') !== '0',
@@ -186,6 +188,8 @@
     version = -1;
     const mySession = ++session;
     takeShared();
+    reportPresence(document.visibilityState === 'visible');
+    refreshPushState();
     refreshSendMode().then(() => {
       // Phone first: if something new was copied here while ClipSync was closed, send it
       // before applying whatever the Mac has.
@@ -322,6 +326,10 @@
 
   async function poll(mySession) {
     while (mySession === session) {
+      // In the background the browser freezes the page anyway; stop polling so the Mac knows to
+      // send a notification instead, and pick up again when the page is visible.
+      while (document.visibilityState === 'hidden' && mySession === session) await sleep(1000);
+      if (mySession !== session) return;
       pollAbort = new AbortController();
       try {
         const r = await fetch(`/api/clipboard?since=${version}&wait=25`, {
@@ -446,7 +454,127 @@
       tryCopyPending();
     });
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resume(); });
+  document.addEventListener('visibilitychange', () => {
+    const visible = document.visibilityState === 'visible';
+    reportPresence(visible);
+    if (visible) resume(); else if (pollAbort) pollAbort.abort();
+  });
+
+  // Tells the Mac whether this page is on screen: while it is, the long poll keeps it in sync;
+  // once it isn't, the Mac sends a push notification instead (if enabled). keepalive lets the
+  // request finish while the page is being hidden.
+  function reportPresence(visible) {
+    if (!token) return;
+    fetch('/api/presence', {
+      method: 'POST', keepalive: true,
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ visible }),
+    }).catch(() => {});
+  }
+
+  // ---------- Notifications while ClipSync is closed (Web Push) ----------
+  // The Mac encrypts and sends them itself through the browser's push service (Google/Apple);
+  // by default they carry no clipboard content — tapping one opens ClipSync, which fetches the
+  // item from the Mac over the local network.
+  const pushSupported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+  function setPushHint(text) { $('pushHint').textContent = text; }
+
+  function urlBase64ToUint8Array(value) {
+    const base64 = (value + '='.repeat((4 - (value.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+    return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  }
+
+  async function pushRegistration() {
+    // Service workers only run once the Mac's certificate is trusted.
+    return Promise.race([navigator.serviceWorker.ready, sleep(3000).then(() => null)]);
+  }
+
+  async function refreshPushState() {
+    $('pushToggle').checked = store.get('clipsync.push') === '1';
+    $('pushPreview').checked = store.get('clipsync.pushPreview') === '1';
+    $('pushPreviewRow').hidden = !$('pushToggle').checked;
+    if (!pushSupported) {
+      $('pushToggle').disabled = true;
+      setPushHint(isIOS && !standalone
+        ? 'On iPhone, add ClipSync to your Home Screen to get notifications.'
+        : 'This browser can’t show notifications for ClipSync.');
+      return;
+    }
+    setPushHint(Notification.permission === 'denied'
+      ? 'Notifications are blocked for ClipSync. Allow them in the browser’s site settings.'
+      : 'Copies on your Mac show up as a notification; tap it to copy. Needs Internet on both devices.');
+    // Keep the Mac's copy of the subscription current (browsers rotate them occasionally).
+    if ($('pushToggle').checked && Notification.permission === 'granted') await enablePush(false);
+  }
+
+  async function enablePush(ask) {
+    if (ask && Notification.permission !== 'granted') {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setPushHint('Notifications were not allowed.');
+        return false;
+      }
+    }
+    const registration = await pushRegistration();
+    if (!registration) {
+      setPushHint('Trust your Mac’s certificate first (⚙ Settings), then reload — the browser only allows notifications from trusted sites.');
+      return false;
+    }
+    try {
+      const keyResponse = await fetch('/api/push/key', { headers: authHeaders(), cache: 'no-store' });
+      if (!keyResponse.ok) throw new Error(String(keyResponse.status));
+      const { key } = await keyResponse.json();
+      let subscription = await registration.pushManager.getSubscription();
+      // A subscription made for another Mac key can't be reused.
+      const current = subscription && subscription.options && subscription.options.applicationServerKey;
+      if (subscription && current && btoa(String.fromCharCode(...new Uint8Array(current))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') !== key) {
+        await subscription.unsubscribe();
+        subscription = null;
+      }
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key),
+        });
+      }
+      const body = Object.assign(subscription.toJSON(), { preview: $('pushPreview').checked });
+      const r = await fetch('/api/push/subscribe', {
+        method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      return true;
+    } catch {
+      setPushHint('Could not turn on notifications. Check that both devices are online and try again.');
+      return false;
+    }
+  }
+
+  async function disablePush() {
+    try {
+      const registration = await pushRegistration();
+      const subscription = registration && await registration.pushManager.getSubscription();
+      if (subscription) await subscription.unsubscribe();
+    } catch { /* already gone */ }
+    try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: authHeaders() }); } catch { /* offline */ }
+  }
+
+  $('pushToggle').addEventListener('change', async (e) => {
+    if (e.target.checked) {
+      const ok = await enablePush(true);
+      e.target.checked = ok;
+      store.set('clipsync.push', ok ? '1' : '0');
+      if (ok) toast('Notifications on');
+    } else {
+      store.set('clipsync.push', '0');
+      await disablePush();
+    }
+    $('pushPreviewRow').hidden = !e.target.checked;
+  });
+
+  $('pushPreview').addEventListener('change', async (e) => {
+    store.set('clipsync.pushPreview', e.target.checked ? '1' : '0');
+    if ($('pushToggle').checked) await enablePush(false);
+  });
   window.addEventListener('focus', resume);
   window.addEventListener('pageshow', (e) => { if (e.persisted) resume(); });
 

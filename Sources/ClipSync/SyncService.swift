@@ -8,6 +8,9 @@ final class SyncService {
     let devices = DeviceStore()
     let certificates = CertificateManager()
     let hostnamePublisher = HostnamePublisher()
+    let push = PushService()
+    /// When each device last said its ClipSync page went to the background.
+    private var hiddenAt: [String: Date] = [:]
     private var server: HTTPServer?
     private var addressTimer: Timer?
 
@@ -38,6 +41,18 @@ final class SyncService {
 
     func start() throws {
         store.start()
+        // Unpaired devices lose their push subscription too.
+        devices.onDevicesChanged = { [weak self] in
+            guard let self else { return }
+            self.push.prune(keeping: Set(self.devices.devices.map(\.id)))
+        }
+        push.prune(keeping: Set(devices.devices.map(\.id)))
+        store.onChange = { [weak self] item in
+            guard let self else { return }
+            self.push.notify(about: item, version: self.store.version, epoch: self.epoch) { [weak self] id in
+                self?.isOnline(deviceID: id) ?? true
+            }
+        }
         hostnamePublisher.update(addresses: Self.localIPv4Interfaces())
         try startServer()
         // Wi‑Fi changes give the Mac a new IP; reissue the certificate so phones keep connecting.
@@ -297,12 +312,50 @@ final class SyncService {
             respond(receive(req, device: device))
 
         case ("POST", "/api/unpair"):
+            push.unsubscribe(deviceID: device.id)
             devices.unpair(id: device.id)
             respond(.json(["ok": true]))
+
+        case ("GET", "/api/push/key"):
+            let subscription = push.subscriptions[device.id]
+            respond(.json(["key": push.publicKey, "subscribed": subscription != nil,
+                           "preview": subscription?.preview ?? false]))
+
+        case ("POST", "/api/push/subscribe"):
+            let body = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            let keys = body?["keys"] as? [String: Any]
+            do {
+                try push.subscribe(deviceID: device.id,
+                                   endpoint: body?["endpoint"] as? String ?? "",
+                                   p256dh: keys?["p256dh"] as? String ?? "",
+                                   auth: keys?["auth"] as? String ?? "",
+                                   preview: body?["preview"] as? Bool ?? false)
+                respond(.json(["ok": true]))
+            } catch {
+                respond(.json(["error": "unsupported push subscription"], status: 400))
+            }
+
+        case ("POST", "/api/push/unsubscribe"):
+            push.unsubscribe(deviceID: device.id)
+            respond(.json(["ok": true]))
+
+        case ("POST", "/api/presence"):
+            // The page reports when it goes to the background, so the Mac knows to notify it.
+            let body = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            if body?["visible"] as? Bool == false { hiddenAt[device.id] = Date() } else { hiddenAt[device.id] = nil }
+            respond(HTTPResponse(status: 204, contentType: "text/plain", body: Data()))
 
         default:
             respond(.text("Not found", status: 404))
         }
+    }
+
+    /// A phone with ClipSync open on screen syncs by itself and needs no notification: it polls
+    /// at least every 25 s and says when it goes to the background.
+    private func isOnline(deviceID: String) -> Bool {
+        guard let seen = devices.lastSeen[deviceID], Date().timeIntervalSince(seen) < 35 else { return false }
+        if let hidden = hiddenAt[deviceID], hidden >= seen { return false }
+        return true
     }
 
     // MARK: - Pairing
