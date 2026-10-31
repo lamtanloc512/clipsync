@@ -105,6 +105,26 @@ Design notes:
 4. On Accept, the phone receives a 32-character device token via `/api/pair/status` (handed out once). The Mac stores only its SHA-256.
 5. The secret is revoked after every decision, after 10 minutes, or when the QR window closes.
 
+## Automation: iOS Shortcuts, HTTP Shortcuts, Tasker
+
+Install the certificate on the phone first (see README). Then, on the web page, go to **Settings → Show token** and copy the token. Use the address shown in the menu bar (normally `clipsync.local`).
+
+**iOS Shortcuts: "Send clipboard to Mac"**
+1. **Get Clipboard**
+2. **Get Contents of URL**
+   - URL: `https://clipsync.local:8765/api/clipboard`
+   - Method: **POST**
+   - Headers: `X-Token` = *your token*
+   - Request Body: **File** → *Clipboard*
+
+**iOS Shortcuts: "Get Mac clipboard"**
+1. **Get Contents of URL**: `https://clipsync.local:8765/api/clipboard/raw`, header `X-Token` = *your token*
+2. **Copy to Clipboard**
+
+Tip: assign a shortcut to **Back Tap** (Settings → Accessibility → Touch → Back Tap).
+
+**Android:** create the same requests in [HTTP Shortcuts](https://http-shortcuts.rmy.ch/) or Tasker.
+
 ## HTTP API
 
 All endpoints are HTTPS on port 8765. Authenticated endpoints need `X-Token: <token>` or `Authorization: Bearer <token>`. Tokens in the URL are not accepted, and there is no CORS.
