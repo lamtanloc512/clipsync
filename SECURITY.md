@@ -26,12 +26,12 @@ ClipSync runs an HTTPS server on your Mac that phones on the same local network 
 | Threat | Mitigation |
 |---|---|
 | Eavesdropping on the Wi‑Fi | TLS 1.2+ with a server certificate signed by a per-Mac private CA |
-| Someone on the network spamming pairing prompts | Pairing requires a one-time secret that is only shown in the QR code on the Mac's screen |
+| Someone on the network pairing a phone | Pairing requires a one-time secret that is only shown on the Mac's screen, works once, and expires after 10 minutes or when the window closes |
 | A malicious website pairing itself or reading the clipboard (CSRF/CORS) | No CORS headers. A strict Content-Security-Policy (`script-src 'self'`, no inline scripts). Requests with a foreign `Origin` are refused. Pairing needs the QR secret, which websites cannot know |
 | Revealing the Mac's identity | Phones use the neutral mDNS name `clipsync.local`. The server certificate, the public CA (`/ca.crt`) and the iOS profile carry no Mac or owner name |
 | DNS rebinding | The `Host` header must be one of the Mac's own names or addresses. TLS also checks the name |
 | Access from the internet (global IPv6, VPN peers) | Connections are only accepted from private, link-local, ULA, CGNAT and loopback addresses |
-| Accidentally approving a stranger | The same 4-digit code is shown on both screens. **Accept** requires a click and has no keyboard shortcut |
+| A phone paired without you noticing | The Mac shows a notification naming every new device; unpair it under **Paired Devices** |
 | Leaked CA key | The CA has name constraints (private IPs, `*.local`, `localhost` only), an EKU limited to `serverAuth`, and no email/URI names. It cannot impersonate public websites |
 | Leaked token | Each device has its own 32-character token. Only its SHA-256 is stored, tokens are accepted in headers only (not URLs), and devices can be unpaired individually |
 | Denial of service | At most 64 connections, a 20 s request deadline, and no request body before authentication (4 KB limit) |
@@ -51,6 +51,7 @@ These are inherent to the current design. Please keep them in mind:
   - Do the first pairing on a network nobody else can interfere with, such as the phone's own hotspot or your home Wi‑Fi.
   - On iPhone, install the certificate via AirDrop.
   - Compare the certificate fingerprint on the phone with the one shown in the Mac's QR window. Checking the first and last 8 hex digits (64 bits) is enough.
+- **Pairing has no confirmation on the Mac.** Whoever gets the secret pairs immediately and starts receiving the clipboard. Someone who can see the QR code or the code under it while the window is open can do this, and so can the attacker described above, who reads the secret during a first connection. Keep the window closed when you aren't pairing, and check the notification.
 - **Automatic sending from the phone.** With auto-send on, whatever is copied on the phone while ClipSync is open — including passwords from a password manager — is sent to the Mac. Browsers don't expose "sensitive" clipboard flags, so ClipSync can't filter these on the phone side.
 - **mDNS name.** Anyone on the network can also announce `clipsync.local`. If another device takes the name first, ClipSync switches to `clipsync-xxxx.local`. A device that answers for the name can't impersonate the Mac, because it has no certificate signed by your Mac's CA — but on a first connection without the CA installed (see above) the phone can't tell the difference.
 - **Files on the clipboard are shared.** A file you copy in Finder can be downloaded by any paired phone while it is in ClipSync's clipboard history (last 20 items). Download links work for 10 minutes for anyone who has the link.

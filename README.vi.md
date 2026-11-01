@@ -28,7 +28,7 @@ ClipSync nằm trên thanh menu (biểu tượng clipboard) và hiện mã QR �
 
 1. Quét mã QR bằng camera điện thoại. (Lần sau: biểu tượng trên thanh menu → **Pair a Phone**.)
 2. Trình duyệt báo kết nối không riêng tư. Điều này là bình thường ở lần đầu, vì Mac dùng chứng chỉ riêng. Cứ tiếp tục (Android: **Advanced → Proceed**; iPhone: **Show Details → visit this website**).
-3. Bấm **Pair**, kiểm tra mã 4 số trùng với mã trên Mac, rồi bấm **Accept** trên Mac.
+3. Điện thoại tự ghép đôi, và Mac hiện một thông báo.
 4. Bấm **Install** (Android) hoặc **Share → Add to Home Screen** (iPhone) để có ClipSync như một app.
 
 Xong. Giữ ClipSync mở trên điện thoại là clipboard luôn được đồng bộ.

@@ -43,30 +43,18 @@
     <section id="pairView" class="card" hidden>
       <header>
         <h2>Pair with your Mac</h2>
-        <p>Confirm the request on your Mac to start syncing.</p>
+        <p>Scan the code on your Mac once to start syncing.</p>
       </header>
       <section class="flex flex-col gap-4">
-        <div id="pairScan" class="alert" hidden>
+        <div id="pairScan" class="alert">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
           <h2>Scan the QR code</h2>
           <section>On your Mac, open <strong>Pair a Phone</strong> from the ClipSync menu and scan the code with this phone’s camera — or type the pairing code shown under it.</section>
         </div>
-        <form id="codeForm" class="flex gap-2" hidden>
+        <form id="codeForm" class="flex gap-2">
           <input id="codeInput" class="input" type="text" placeholder="Pairing code, e.g. abcd-efgh-jkmn" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" aria-label="Pairing code">
           <button type="submit" class="btn">Continue</button>
         </form>
-        <form id="pairForm" class="flex flex-col gap-3">
-          <div role="group" class="field">
-            <label for="deviceName">Device name</label>
-            <input id="deviceName" class="input" type="text" maxlength="40" autocomplete="off" required>
-          </div>
-          <button id="pairBtn" type="submit" class="btn">Pair</button>
-        </form>
-        <div id="pairWait" class="flex flex-col items-center gap-3 text-center" hidden>
-          <p class="text-sm text-muted-foreground">Check that your Mac shows the same code, then click <strong>Accept</strong> there.</p>
-          <p id="pairCode" class="font-mono text-5xl font-semibold tracking-[0.2em]"></p>
-          <button id="pairCancel" type="button" class="btn" data-variant="outline">Cancel</button>
-        </div>
         <p id="pairMsg" class="text-sm text-destructive" role="status"></p>
       </section>
     </section>

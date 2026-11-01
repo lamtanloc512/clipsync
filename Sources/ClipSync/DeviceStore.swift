@@ -9,46 +9,22 @@ struct PairedDevice: Codable {
     let pairedAt: Date
 }
 
-struct PairRequest {
-    enum State: String { case pending, accepted, rejected, expired }
-
-    let id: String
-    let name: String
-    /// Short code shown on both screens so the user can check they are pairing the right phone.
-    let code: String
-    var state: State = .pending
-    /// Set once accepted; handed to the phone exactly once.
-    var token: String?
-}
-
-enum PairError: Error {
-    /// The QR secret is missing, wrong or expired: the phone did not scan the current QR code.
-    case invalidSecret
-    case tooManyRequests
-}
-
-/// Paired devices (persisted) and in-flight pairing requests (memory only).
+/// Paired devices (persisted) and the one-time pairing secret (memory only).
 final class DeviceStore {
     private(set) var devices: [PairedDevice] = []
     private(set) var lastSeen: [String: Date] = [:]
-    private var requests: [String: PairRequest] = [:]
-    private var waiters: [String: [UUID: () -> Void]] = [:]
     private let fileURL = appSupportDirectory.appendingPathComponent("devices.json")
 
-    static let maxPendingRequests = 3
-    static let requestLifetime: TimeInterval = 120
     static let pairingSecretLifetime: TimeInterval = 600
 
-    /// One-time secret embedded in the QR code. Only a phone that has seen the Mac's
-    /// screen can start pairing, so nobody else on the network can spam pairing prompts.
+    /// One-time secret embedded in the QR code. Presenting it pairs the phone with no further
+    /// confirmation: only someone who can see the Mac's screen has it.
     private var pairingSecret: String?
     private var pairingSecretTimer: Timer?
     /// The QR secret expired or was used; the QR window should show a fresh one.
     var onPairingSecretInvalidated: (() -> Void)?
 
-    var onPairRequest: ((PairRequest) -> Void)?
-    /// A request stopped being pending (accepted, rejected or expired).
-    var onPairRequestClosed: ((String) -> Void)?
+    var onDevicePaired: ((PairedDevice) -> Void)?
     var onDevicesChanged: (() -> Void)?
 
     init() {
@@ -79,7 +55,7 @@ final class DeviceStore {
 
     func issuePairingSecret() -> String {
         // 12 characters from a 31-letter alphabet (~59 bits): short enough to type into an iPhone
-        // home-screen app, far too many to guess in the 10 minutes it lives (and Accept is still needed).
+        // home-screen app, far too many to guess in the 10 minutes it lives.
         let secret = randomString(length: 12)
         pairingSecret = secret
         pairingSecretTimer?.invalidate()
@@ -98,83 +74,20 @@ final class DeviceStore {
 
     // MARK: - Pairing
 
-    func createRequest(name: String, secret: String) -> Result<PairRequest, PairError> {
-        guard let expected = pairingSecret, constantTimeEquals(secret, expected) else {
-            return .failure(.invalidSecret)
-        }
-        let pending = requests.values.filter { $0.state == .pending }.count
-        guard pending < Self.maxPendingRequests else { return .failure(.tooManyRequests) }
+    /// Spends the secret on a new device and returns its token, or nil if the secret is wrong.
+    func pair(name: String, secret: String) -> String? {
+        guard let expected = pairingSecret, constantTimeEquals(secret, expected) else { return nil }
+        revokePairingSecret()
 
         let cleanName = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
-        let request = PairRequest(
-            id: UUID().uuidString,
-            name: cleanName.isEmpty ? "Phone" : cleanName,
-            code: String(format: "%04d", Int.random(in: 0...9999))
-        )
-        requests[request.id] = request
-
-        scheduleTimer(after: Self.requestLifetime) { [weak self] _ in
-            guard let self, var req = self.requests[request.id] else { return }
-            if req.state == .pending {
-                req.state = .expired
-                self.requests[request.id] = req
-                self.notify(request.id)
-                self.onPairRequestClosed?(request.id)
-            }
-            // Drop the request (and any token nobody collected) shortly after.
-            scheduleTimer(after: 60) { [weak self] _ in self?.requests[request.id] = nil }
-        }
-
-        onPairRequest?(request)
-        return .success(request)
-    }
-
-    func resolve(id: String, accept: Bool) {
-        guard var request = requests[id], request.state == .pending else { return }
-        if accept {
-            let token = randomString(length: 32)
-            devices.append(PairedDevice(id: UUID().uuidString, name: request.name,
-                                        tokenHash: Self.hash(token), pairedAt: Date()))
-            save()
-            request.state = .accepted
-            request.token = token
-            onDevicesChanged?()
-        } else {
-            request.state = .rejected
-        }
-        requests[id] = request
-        notify(id)
-        onPairRequestClosed?(id)
-        // Each QR code is good for one decision; show a fresh one for the next phone.
-        if pairingSecret != nil {
-            revokePairingSecret()
-            onPairingSecretInvalidated?()
-        }
-    }
-
-    /// Current state of a request. Returns the token once for accepted requests.
-    func takeStatus(id: String) -> PairRequest? {
-        guard let request = requests[id] else { return nil }
-        if request.state != .pending { requests[id] = nil }
-        return request
-    }
-
-    func waitForResolution(id: String, timeout: TimeInterval, completion: @escaping () -> Void) {
-        guard let request = requests[id], request.state == .pending else {
-            completion()
-            return
-        }
-        let waiterID = UUID()
-        waiters[id, default: [:]][waiterID] = completion
-        scheduleTimer(after: timeout) { [weak self] _ in
-            guard let self, let waiter = self.waiters[id]?.removeValue(forKey: waiterID) else { return }
-            waiter()
-        }
-    }
-
-    private func notify(_ id: String) {
-        let pending = waiters.removeValue(forKey: id) ?? [:]
-        pending.values.forEach { $0() }
+        let token = randomString(length: 32)
+        let device = PairedDevice(id: UUID().uuidString, name: cleanName.isEmpty ? "Phone" : cleanName,
+                                  tokenHash: Self.hash(token), pairedAt: Date())
+        devices.append(device)
+        save()
+        onDevicesChanged?()
+        onDevicePaired?(device)
+        return token
     }
 
     // MARK: - Persistence

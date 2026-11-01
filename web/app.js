@@ -92,12 +92,7 @@
     $('mainView').hidden = true;
     $('settingsBtn').hidden = true;
     $('pairView').hidden = false;
-    $('pairForm').hidden = !pairSecret;
-    $('pairScan').hidden = !!pairSecret;
-    $('codeForm').hidden = !!pairSecret;
-    $('pairWait').hidden = true;
     $('pairMsg').textContent = message;
-    $('deviceName').value = store.get('clipsync.deviceName') || guessName;
     setStatus('Not paired', 'outline');
   }
 
@@ -108,42 +103,31 @@
       : base;
   }
 
-  let pairing = null;
-  $('pairForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const name = $('deviceName').value.trim() || guessName;
-    store.set('clipsync.deviceName', name);
-    $('pairMsg').textContent = '';
-    $('pairBtn').disabled = true;
+  // The secret is the approval: it pairs right away, and works only once.
+  async function pair(secret) {
+    pairSecret = null;
+    setStatus('Pairing…', 'outline');
     try {
       const r = await fetch('/api/pair', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, secret: pairSecret }),
+        body: JSON.stringify({ name: store.get('clipsync.deviceName') || guessName, secret }),
       });
       if (r.status === 403) {
-        pairSecret = null;
-        showPair('This QR code expired or was already used. Scan the new code on your Mac.');
+        showPair('This code expired or was already used. Use the new code on your Mac.');
         return;
       }
-      if (r.status === 429) throw new Error('Too many pairing requests. Try again in a minute.');
       if (!r.ok) throw new Error(`Pairing failed (${r.status}).`);
-      const j = await r.json();
-      pairing = j.id;
-      $('pairCode').textContent = j.code;
-      $('pairForm').hidden = true;
-      $('pairWait').hidden = false;
-      waitForPairing(j.id);
+      token = (await r.json()).token;
+      store.set('clipsync.deviceToken', token);
+      showMain();
+      toast('Paired with your Mac');
     } catch (e) {
       // fetch() rejects with a bare TypeError ("Load failed" on iOS) for both network and
       // certificate failures, and a request from the page gets no warning to click through.
-      $('pairMsg').textContent = e instanceof TypeError ? unreachableMessage() : e.message;
-    } finally {
-      $('pairBtn').disabled = false;
+      showPair(e instanceof TypeError ? unreachableMessage() : e.message);
     }
-  });
-
-  $('pairCancel').addEventListener('click', () => { pairing = null; showPair(); });
+  }
 
   // Typing the code instead of scanning: needed for an iPhone home-screen app, which can't
   // receive the QR link (it opens Safari, whose storage is separate).
@@ -151,40 +135,9 @@
     event.preventDefault();
     const code = $('codeInput').value.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!code) return;
-    pairSecret = code;
     $('codeInput').value = '';
-    showPair();
+    pair(code);
   });
-
-  async function waitForPairing(id) {
-    while (pairing === id) {
-      try {
-        const r = await fetch(`/api/pair/status?id=${encodeURIComponent(id)}&wait=25`, { cache: 'no-store' });
-        const j = await r.json();
-        if (pairing !== id) return;
-        if (j.state === 'accepted' && j.token) {
-          token = j.token;
-          store.set('clipsync.deviceToken', token);
-          pairing = null;
-          pairSecret = null;
-          showMain();
-          toast('Paired with your Mac');
-          return;
-        }
-        // The QR secret is single-use, so a new attempt needs a fresh scan.
-        if (j.state === 'rejected' || j.state === 'expired') {
-          pairing = null;
-          pairSecret = null;
-          showPair(j.state === 'rejected'
-            ? 'Your Mac rejected the request.'
-            : 'The request expired. Scan the QR code again.');
-          return;
-        }
-      } catch {
-        await sleep(2000);
-      }
-    }
-  }
 
   // ---------- Main view ----------
   function showMain() {
@@ -209,7 +162,7 @@
   function unpaired(message) {
     token = null;
     store.del('clipsync.deviceToken');
-    showPair(message);
+    if (pairSecret) pair(pairSecret); else showPair(message);
   }
 
   function describe(j) {
@@ -857,8 +810,11 @@
     if (!confirm('Unpair this phone from your Mac?')) return;
     try { await fetch('/api/unpair', { method: 'POST', headers: authHeaders() }); } catch { /* offline */ }
     settings.close();
+    pairSecret = null;
     unpaired('Unpaired. Scan the QR code on your Mac to pair again.');
   });
 
-  if (token) showMain(); else showPair();
+  if (token) showMain();
+  else if (pairSecret) pair(pairSecret);
+  else showPair();
 })();

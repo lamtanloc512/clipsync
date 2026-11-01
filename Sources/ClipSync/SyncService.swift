@@ -109,7 +109,7 @@ final class SyncService {
         "GET /sw.js",
         "GET /icon-180.png", "GET /icon-192.png", "GET /icon-512.png", "GET /icon-maskable-512.png",
         "GET /ca.crt", "GET /ca.mobileconfig",
-        "POST /api/pair", "GET /api/pair/status",
+        "POST /api/pair",
     ]
 
     private func admit(_ head: HTTPRequestHead) -> Admission {
@@ -231,10 +231,7 @@ final class SyncService {
             respond(.data(profile, contentType: "application/x-apple-aspen-config"))
             return
         case ("POST", "/api/pair"):
-            startPairing(req, respond: respond)
-            return
-        case ("GET", "/api/pair/status"):
-            pairStatus(req, respond: respond)
+            respond(pair(req))
             return
         default:
             break
@@ -360,33 +357,14 @@ final class SyncService {
 
     // MARK: - Pairing
 
-    private func startPairing(_ req: HTTPRequest, respond: @escaping (HTTPResponse) -> Void) {
+    private func pair(_ req: HTTPRequest) -> HTTPResponse {
         let body = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
         let name = body?["name"] as? String ?? "Phone"
         let secret = body?["secret"] as? String ?? ""
-        switch devices.createRequest(name: name, secret: secret) {
-        case .success(let request):
-            respond(.json(["id": request.id, "code": request.code])) // no Mac name to unpaired clients
-        case .failure(.invalidSecret):
-            respond(.json(["error": "invalid_secret"], status: 403))
-        case .failure(.tooManyRequests):
-            respond(.json(["error": "too_many_requests"], status: 429))
+        guard let token = devices.pair(name: name, secret: secret) else {
+            return .json(["error": "invalid_secret"], status: 403)
         }
-    }
-
-    private func pairStatus(_ req: HTTPRequest, respond: @escaping (HTTPResponse) -> Void) {
-        let id = req.query["id"] ?? ""
-        let wait = min(max(Double(req.query["wait"] ?? "0") ?? 0, 0), 30)
-        devices.waitForResolution(id: id, timeout: wait) { [weak self] in
-            guard let self else { return }
-            guard let request = self.devices.takeStatus(id: id) else {
-                respond(.json(["state": "expired"], status: 410))
-                return
-            }
-            var obj: [String: Any] = ["state": request.state.rawValue]
-            if let token = request.token { obj["token"] = token }
-            respond(.json(obj))
-        }
+        return .json(["token": token])
     }
 
     // MARK: - Clipboard

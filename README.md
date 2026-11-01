@@ -28,7 +28,7 @@ ClipSync lives in the menu bar (clipboard icon) and shows a QR code the first ti
 
 1. Scan the QR code with your phone's camera. (Later: menu bar icon → **Pair a Phone**.)
 2. The browser warns that the connection isn't private — expected the first time, as your Mac uses its own certificate. Continue anyway (Android: **Advanced → Proceed**; iPhone: **Show Details → visit this website**).
-3. Tap **Pair**, check that the 4‑digit code matches the one on your Mac, and click **Accept** on the Mac.
+3. The phone pairs by itself, and your Mac shows a notification.
 4. Tap **Install** (Android) or **Share → Add to Home Screen** (iPhone) to get ClipSync as an app.
 
 That's it. Keep ClipSync open on the phone and your clipboards stay in sync.

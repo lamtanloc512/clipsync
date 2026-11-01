@@ -60,7 +60,7 @@ ClipSync is a single macOS menu-bar app. Phones are plain HTTPS clients: a web p
 
 ```
 ┌──────────────────── Mac (ClipSync.app) ────────────────────┐
-│ AppDelegate ─ menu bar, PairingWindow (QR), PairRequestWindow│
+│ AppDelegate ─ menu bar, PairingWindow (QR)                   │
 │      │                                                     │
 │ SyncService ─ routing, admission (Host/Origin/auth), pairing│
 │   │     │                                                  │
@@ -83,7 +83,6 @@ ClipSync is a single macOS menu-bar app. Phones are plain HTTPS clients: a web p
 | `CertificateManager.swift` | Name-constrained CA and server certificate via `/usr/bin/openssl`, TLS identity |
 | `DeviceStore.swift` | Paired devices (persisted), pairing requests, one-time QR secret |
 | `PairingWindow.swift` | QR code window (`.local` URL with IP fallback, CA fingerprint) |
-| `PairRequestWindow.swift` | Non-modal Accept/Reject panel |
 | `LoginItem.swift` | Launch at Login: `SMAppService` on macOS 13+, a LaunchAgent on 11–12 |
 | `PushService.swift` | Web Push: subscriptions, VAPID key, sends a notification (debounced) to phones that aren't online |
 | `HostnamePublisher.swift` | Publishes `clipsync.local` (mDNS A records via `dns_sd`), picks `clipsync-xxxx.local` on conflict |
@@ -102,10 +101,10 @@ Design notes:
 ### Pairing flow
 
 1. **Pair a Phone** generates a one-time secret and shows `https://clipsync.local:8765/#k=<secret>` as a QR code (the IP address is only a fallback the user can switch to). The secret is in the URL fragment, so browsers never send it in requests or `Referer` headers.
-2. The web client posts `{name, secret}` to `/api/pair`. If the secret is wrong or missing the request is refused (403), and the Mac shows nothing.
-3. The Mac shows an Accept/Reject panel with a 4-digit code that the phone also displays.
-4. On Accept, the phone receives a 32-character device token via `/api/pair/status` (handed out once). The Mac stores only its SHA-256.
-5. The secret is revoked after every decision, after 10 minutes, or when the QR window closes.
+2. The web client posts `{name, secret}` to `/api/pair` as soon as it opens. If the secret is wrong or missing the request is refused (403), and the Mac shows nothing.
+3. A valid secret pairs the phone with no further confirmation: having it proves you can see the Mac's screen. The response carries a 32-character device token, and the Mac stores only its SHA-256.
+4. The QR window closes and the Mac shows a notification naming the new device.
+5. The secret is revoked once used, after 10 minutes, or when the QR window closes.
 
 ## Automation: iOS Shortcuts, HTTP Shortcuts, Tasker
 
@@ -136,8 +135,7 @@ All endpoints are HTTPS on port 8765. Authenticated endpoints need `X-Token: <to
 | GET | `/` | – | Web client (`/app.css`, `/app.js`, `/sw.js`, `/manifest.webmanifest`, icons) |
 | POST | `/share-target` | – | Android Web Share Target. Normally handled by the service worker; without one the server answers 303 without reading the body |
 | GET | `/ca.crt`, `/ca.mobileconfig` | – | CA certificate (DER) and iOS configuration profile |
-| POST | `/api/pair` | QR secret | `{"name", "secret"}` → `{id, code}` |
-| GET | `/api/pair/status?id=&wait=25` | – | `{state: pending/accepted/rejected/expired, token?}` |
+| POST | `/api/pair` | QR secret | `{"name", "secret"}` → `{token}` |
 | GET | `/api/clipboard?since=N&wait=25` | ✓ | `{version, epoch, kind, text, source, mine, date}` (long poll). `epoch` changes when the Mac app restarts; `mine` is true if the calling device sent the item |
 | GET | `/api/clipboard/raw` | ✓ | Current item as `text/plain` or `image/png` |
 | GET | `/api/clipboard/image` | ✓ | Current image as PNG |

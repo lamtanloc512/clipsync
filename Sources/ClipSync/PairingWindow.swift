@@ -50,7 +50,7 @@ final class PairingWindowController: NSWindowController, NSWindowDelegate {
         1. Scan with the phone camera (same Wi‑Fi).
         2. First time only: the browser warns about the certificate → “Show Details” → “visit this website”.
            Safest: do this first pairing on the phone’s own hotspot (connect the Mac to it).
-        3. Tap Pair, then Accept here when the codes match.
+        3. That’s it: the phone pairs by itself and this window closes.
         Installed ClipSync on an iPhone home screen? Type the code above in the app instead.
         The code works once and expires in 10 minutes or when this window closes.
         Tip: install the certificate from the page’s Settings to remove the warning for good.

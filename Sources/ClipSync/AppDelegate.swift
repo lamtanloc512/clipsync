@@ -5,7 +5,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private let service = SyncService()
     private var statusItem: NSStatusItem!
     private var pairingWindow: PairingWindowController?
-    private lazy var pairRequestWindow = PairRequestWindowController()
     private var serverState = "starting…"
     private var flashTask: Task<Void, Never>?
 
@@ -31,14 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         service.onReceive = { [weak self] _ in
             self?.flashReceived()
         }
-        service.devices.onPairRequest = { [weak self] request in
-            self?.pairRequestWindow.enqueue(request)
-        }
-        service.devices.onPairRequestClosed = { [weak self] id in
-            self?.pairRequestWindow.close(requestID: id)
-        }
-        pairRequestWindow.onDecision = { [weak self] id, accepted in
-            self?.service.devices.resolve(id: id, accept: accepted)
+        service.devices.onDevicePaired = { [weak self] device in
+            self?.pairingWindow?.close()
+            self?.notifyDevicePaired(device.name)
         }
         service.hostnamePublisher.onHostnameChange = { [weak self] _ in
             // New name after an mDNS conflict: reissue the certificate and refresh an open QR code.
@@ -192,6 +186,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             content.title = "File from \(device)"
             content.body = "\(url.lastPathComponent) is in Downloads and on the clipboard."
             content.userInfo = ["path": url.path]
+            content.sound = .default
+            center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        }
+    }
+
+    /// Pairing needs no confirmation, so this is how the owner notices a phone they don't know.
+    private func notifyDevicePaired(_ name: String) {
+        flashReceived()
+        guard Self.canNotify else { return }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "\(name) paired"
+            content.body = "Not yours? Unpair it under Paired Devices in the ClipSync menu."
             content.sound = .default
             center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
