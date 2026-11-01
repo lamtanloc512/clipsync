@@ -114,7 +114,7 @@
         body: JSON.stringify({ name: store.get('clipsync.deviceName') || guessName, secret }),
       });
       if (r.status === 403) {
-        showPair('This code expired or was already used. Use the new code on your Mac.');
+        showPair('This code expired or was already used. Scan or type the new code from your Mac.');
         return;
       }
       if (!r.ok) throw new Error(`Pairing failed (${r.status}).`);
@@ -133,11 +133,24 @@
   // receive the QR link (it opens Safari, whose storage is separate).
   $('codeForm').addEventListener('submit', (event) => {
     event.preventDefault();
-    const code = $('codeInput').value.toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!code) return;
+    const code = parsePairingCode($('codeInput').value);
+    if (!code) {
+      $('pairMsg').textContent = 'That doesn’t look like a pairing code. It has 12 letters and digits, e.g. abcd-efgh-jkmn.';
+      return;
+    }
     $('codeInput').value = '';
     pair(code);
   });
+
+  // Accepts what people paste as well as what they type: "abcd-efgh-jkmn", "Code: abcd efgh jkmn"
+  // (copied from the Mac's pairing window, e.g. through iPhone Mirroring) or the whole QR link.
+  function parsePairingCode(input) {
+    const value = input.trim();
+    const fromLink = /[#&]k=([a-z0-9]+)/i.exec(value);
+    const raw = fromLink ? fromLink[1] : value.replace(/^\s*code\s*:?/i, '');
+    const code = raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return /^[a-z0-9]{12}$/.test(code) ? code : null;
+  }
 
   // ---------- Main view ----------
   function showMain() {

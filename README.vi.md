@@ -75,6 +75,7 @@ Mục **Recent** trên menu giữ 20 nội dung gần nhất: chữ, ảnh và f
 | Vấn đề | Cách xử lý |
 |---|---|
 | Link trong QR không mở được | Hai máy cùng Wi‑Fi chưa? Bấm **Use the IP address instead** dưới mã QR (một số máy Android không mở được địa chỉ `.local`). |
+| Pair qua **iPhone Mirroring** | Camera không dùng được khi đang mirroring: mở ClipSync trong Safari trên iPhone, rồi copy **mã (code)** trong cửa sổ pair trên Mac và dán vào. |
 | "Mac not reachable" | ClipSync có đang chạy, Mac có đang ngủ không? Wi‑Fi công cộng hoặc Wi‑Fi khách thường chặn các thiết bị nói chuyện với nhau, khi đó hãy dùng hotspot của điện thoại. |
 | Điện thoại không tự gửi | Bấm **Allow** trong Auto sync (Android). Trên iPhone dùng **Send clipboard to Mac**. |
 | Không thấy nút **Install** trên Android | Tin cậy chứng chỉ trước (xem phần trên), rồi tải lại trang. |
