@@ -101,6 +101,13 @@
     setStatus('Not paired', 'outline');
   }
 
+  function unreachableMessage() {
+    const base = 'Can’t reach your Mac. Check that ClipSync is running on it and that both are on the same Wi‑Fi.';
+    return isIOS
+      ? `${base} If they are, this device doesn’t trust your Mac’s certificate yet: in the ClipSync menu on the Mac, choose Send Certificate via AirDrop…, install it in Settings → General → VPN & Device Management, then turn on ClipSync in Settings → General → About → Certificate Trust Settings.`
+      : base;
+  }
+
   let pairing = null;
   $('pairForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -128,7 +135,9 @@
       $('pairWait').hidden = false;
       waitForPairing(j.id);
     } catch (e) {
-      $('pairMsg').textContent = e.message || 'Your Mac is not reachable.';
+      // fetch() rejects with a bare TypeError ("Load failed" on iOS) for both network and
+      // certificate failures, and a request from the page gets no warning to click through.
+      $('pairMsg').textContent = e instanceof TypeError ? unreachableMessage() : e.message;
     } finally {
       $('pairBtn').disabled = false;
     }

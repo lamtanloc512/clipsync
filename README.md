@@ -34,12 +34,14 @@ ClipSync lives in the menu bar (clipboard icon) and shows a QR code the first ti
 That's it. Keep ClipSync open on the phone and your clipboards stay in sync.
 
 <details>
-<summary><b>Recommended: trust your Mac's certificate</b> (removes the warning, needed to install the app on Android)</summary>
+<summary><b>Recommended: trust your Mac's certificate</b> (removes the warning, needed to install the app on Android, and needed on iPhone if pairing can't reach your Mac)</summary>
 
 In ClipSync on the phone, open **⚙ Settings → Trust your Mac's certificate**, then:
 
 - **Android:** download the certificate → phone **Settings → Security → Encryption & credentials → Install a certificate → CA certificate**.
 - **iPhone:** on the Mac choose **Send Certificate via AirDrop…** (or download the profile) → **Settings → General → VPN & Device Management** → install → **Settings → General → About → Certificate Trust Settings** → turn on ClipSync.
+
+On iPhone, if ClipSync opens but pairing says it can't reach your Mac (or shows **Load failed**) and the Mac and phone are on the same Wi‑Fi, no warning appears to continue past. Trust the certificate as above: start from the Mac, since the phone can't reach ClipSync yet.
 
 The certificate only works for devices on your local network; it can't be used for real websites. For the most careful setup, do this on your phone's own hotspot and check that the fingerprint matches the one under the QR code on your Mac.
 </details>

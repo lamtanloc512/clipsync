@@ -1,11 +1,10 @@
-// ClipSync service worker: makes the phone client installable, starts it instantly from cache,
-// and receives Android "Share → ClipSync" (Web Share Target). Clipboard data and files are never
-// cached; only the app shell is. Versions are filled in by build.mjs.
+// ClipSync service worker: makes the phone client installable, serves its assets from cache, and
+// receives Android "Share → ClipSync" (Web Share Target). Clipboard data and files are never
+// cached; only the assets are. Versions are filled in by build.mjs.
 const VERSION = '__SW_VERSION__';
 const SHELL_CACHE = `clipsync-shell-${VERSION}`;
 const SHARE_CACHE = 'clipsync-share';
 const SHELL = [
-  '/',
   '/app.css?v=__CSS_VERSION__',
   '/app.js?v=__JS_VERSION__',
   '/manifest.webmanifest',
@@ -41,11 +40,10 @@ self.addEventListener('fetch', (event) => {
   // Live data (clipboard, pairing, uploads, downloads) always goes to the Mac.
   if (request.method !== 'GET' || url.pathname.startsWith('/api/') || url.pathname.startsWith('/dl/')) return;
 
-  if (request.mode === 'navigate') {
-    // Network first, so a ClipSync update on the Mac shows up immediately; cached shell offline.
-    event.respondWith(fetch(request).catch(() => caches.match('/')));
-    return;
-  }
+  // Leave page loads to the browser: a cached page would hide its certificate warning, the only
+  // way past an untrusted certificate, and every call to the Mac would then fail with no way out.
+  if (request.mode === 'navigate') return;
+
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });
 

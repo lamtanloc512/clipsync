@@ -24,7 +24,7 @@ swift run                    # run from the terminal (logs go to stderr)
 
 ### Phone web client
 
-The phone UI lives in `web/` (`index.html`, `app.js`, `app.css`, and `sw.js`, the service worker that makes it an installable PWA, caches the app shell and receives Android shares). It is styled with Tailwind CSS v4 and [Basecoat](https://github.com/lamtanloc512/basecoat) using the **Lyra** style pack, pinned to a commit in `web/build.mjs`. The build compiles everything into `Sources/ClipSync/WebAssets.generated.swift`, which is committed, so building the Mac app never needs Node.
+The phone UI lives in `web/` (`index.html`, `app.js`, `app.css`, and `sw.js`, the service worker that makes it an installable PWA, caches its CSS, JS and icons and receives Android shares). It is styled with Tailwind CSS v4 and [Basecoat](https://github.com/lamtanloc512/basecoat) using the **Lyra** style pack, pinned to a commit in `web/build.mjs`. The build compiles everything into `Sources/ClipSync/WebAssets.generated.swift`, which is committed, so building the Mac app never needs Node.
 
 ```bash
 cd web

@@ -34,12 +34,14 @@ ClipSync nằm trên thanh menu (biểu tượng clipboard) và hiện mã QR �
 Xong. Giữ ClipSync mở trên điện thoại là clipboard luôn được đồng bộ.
 
 <details>
-<summary><b>Nên làm: tin cậy chứng chỉ của Mac</b> (hết cảnh báo, và bắt buộc để cài app trên Android)</summary>
+<summary><b>Nên làm: tin cậy chứng chỉ của Mac</b> (hết cảnh báo, bắt buộc để cài app trên Android, và bắt buộc trên iPhone nếu pair không kết nối được tới Mac)</summary>
 
 Trong ClipSync trên điện thoại, mở **⚙ Settings → Trust your Mac's certificate**, rồi:
 
 - **Android:** tải chứng chỉ → **Cài đặt → Bảo mật → Mã hoá và thông tin xác thực → Cài đặt chứng chỉ → Chứng chỉ CA**.
 - **iPhone:** trên Mac chọn **Send Certificate via AirDrop…** (hoặc tải profile) → **Cài đặt → Cài đặt chung → Quản lý VPN & thiết bị** → cài đặt → **Cài đặt → Cài đặt chung → Giới thiệu → Cài đặt tin cậy chứng nhận** → bật ClipSync.
+
+Trên iPhone, nếu ClipSync mở được nhưng khi pair lại báo không kết nối được tới Mac (hoặc hiện **Load failed**) dù Mac và điện thoại cùng Wi‑Fi, thì sẽ không có cảnh báo nào để bấm tiếp tục. Hãy tin cậy chứng chỉ như trên, và bắt đầu từ Mac, vì lúc này điện thoại chưa vào được ClipSync.
 
 Chứng chỉ này chỉ dùng được cho thiết bị trong mạng nội bộ, không thể dùng cho website thật. Muốn cẩn thận nhất, hãy làm bước này khi đang dùng hotspot của chính điện thoại, và so fingerprint với dòng hiện dưới mã QR trên Mac.
 </details>
