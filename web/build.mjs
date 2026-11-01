@@ -56,6 +56,13 @@ writeFileSync(join(cache, 'app.input.css'), cssInput);
 execFileSync(join(web, 'node_modules/.bin/tailwindcss'),
   ['-i', join(cache, 'app.input.css'), '-o', join(cache, 'app.css'), '--minify'],
   { stdio: 'inherit' });
+// The gzip header records the OS it was made on; pin it so macOS and CI produce the same bytes.
+function gzipBase64(text) {
+  const gzip = gzipSync(text, { level: 9 });
+  gzip[9] = 3;
+  return gzip.toString('base64');
+}
+
 // Normalised once, so the plain, gzip and Swift copies are byte-for-byte the same.
 const normalize = (text) => text.replace(/\r\n/g, '\n').replace(/\n$/, '');
 const css = normalize(readFileSync(join(cache, 'app.css'), 'utf8'));
@@ -106,8 +113,8 @@ enum WebAssets {
     static let appJS = ${swiftString(js)}
 
     /// Pre-compressed copies, served when the browser accepts gzip (~7x smaller).
-    static let appCSSGzip = "${gzipSync(css, { level: 9 }).toString('base64')}"
-    static let appJSGzip = "${gzipSync(js, { level: 9 }).toString('base64')}"
+    static let appCSSGzip = "${gzipBase64(css)}"
+    static let appJSGzip = "${gzipBase64(js)}"
     static let cssVersion = "${short(css)}"
     static let jsVersion = "${short(js)}"
 
