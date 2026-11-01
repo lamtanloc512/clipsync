@@ -73,6 +73,7 @@ Web pages can't run in the background, so the phone syncs while ClipSync is open
 | Problem | Fix |
 |---|---|
 | The QR link doesn't open | Same Wi‑Fi on both? Click **Use the IP address instead** under the QR code (some Android phones can't open `.local` addresses). |
+| Pairing through **iPhone Mirroring** | The camera doesn't work while mirroring: open ClipSync in Safari on the iPhone, then copy the **code** from the Mac's pairing window and paste it in. |
 | "Mac not reachable" | Is ClipSync running and the Mac awake? Guest/public Wi‑Fi often blocks devices from talking to each other — use your phone's hotspot. |
 | Nothing is sent from the phone | Tap **Allow** under Auto sync (Android). On iPhone use **Send clipboard to Mac**. |
 | No **Install** button on Android | Trust the certificate first (see above), then reload. |
