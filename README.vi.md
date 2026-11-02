@@ -8,7 +8,7 @@ Copy trên Mac, dán trên điện thoại, và ngược lại. ClipSync đồng
 - **Gửi file và video dung lượng bao nhiêu cũng được**: điện thoại → thư mục Downloads của Mac, hoặc Mac → điện thoại
 - **Menu Chia sẻ trên Android:** gửi ảnh, video, link từ bất kỳ app nào
 - **Thông báo** khi Mac copy, kể cả lúc ClipSync đang đóng trên điện thoại
-- **Riêng tư và an toàn:** chỉ đi trong mạng nhà bạn, có mã hoá, pair phải được xác nhận trên Mac
+- **Riêng tư và an toàn:** chỉ đi trong mạng nhà bạn, có mã hoá, muốn pair phải có mã trên màn hình Mac
 
 Chạy trên **macOS 11+** và **Android (Chrome)** hoặc **iPhone/iPad (iOS 16.4+)**, dùng chung một Wi‑Fi.
 
@@ -83,7 +83,7 @@ Mục **Recent** trên menu giữ 20 nội dung gần nhất: chữ, ảnh và f
 
 ## Riêng tư và bảo mật
 
-Mọi thứ chỉ đi trong mạng của bạn, ClipSync không có server và không thu thập dữ liệu. Thông báo (tuỳ chọn) đi qua máy chủ đẩy của Google hoặc Apple, được mã hoá đầu-cuối và mặc định không chứa nội dung clipboard. Kết nối được mã hoá (HTTPS). Muốn pair phải có mã QR trên màn hình Mac và bạn phải bấm **Accept**; mỗi điện thoại có thể unpair bất cứ lúc nào. Điện thoại đã pair đọc được những gì bạn copy và thay đổi được clipboard của Mac, nên chỉ pair thiết bị của chính bạn. Chi tiết: [SECURITY.md](SECURITY.md) (tiếng Anh).
+Mọi thứ chỉ đi trong mạng của bạn, ClipSync không có server và không thu thập dữ liệu. Thông báo (tuỳ chọn) đi qua máy chủ đẩy của Google hoặc Apple, được mã hoá đầu-cuối và mặc định không chứa nội dung clipboard. Kết nối được mã hoá (HTTPS). Muốn pair phải có mã QR dùng một lần trên màn hình Mac, Mac sẽ báo mỗi khi có điện thoại mới, và mỗi điện thoại có thể unpair bất cứ lúc nào. Điện thoại đã pair đọc được những gì bạn copy và thay đổi được clipboard của Mac, nên chỉ pair thiết bị của chính bạn. Chi tiết: [SECURITY.md](SECURITY.md) (tiếng Anh).
 
 ## Dành cho lập trình viên
 
